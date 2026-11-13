@@ -16,6 +16,12 @@ shows only part of the map, with Follow Me available as before.
 Run `npm test` for viewport geometry checks and `npm run build` for a production
 build.
 
+**Self Color**, **Teammate Color** and **Enemy Color** in Settings control radar
+markers independently, including their borders and glow. Choose a preset or a
+custom colour. Defaults are green for yourself and teammates, red for enemies.
+These preferences are saved in the browser and also work in minimap mode;
+no helper/backend changes are needed.
+
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
 Currently, two official plugins are available:

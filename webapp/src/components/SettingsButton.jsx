@@ -1,4 +1,5 @@
 import MapRotationControl from "./MapRotationControl";
+import PlayerColorSettings from "./PlayerColorSettings";
 import ColorField from "./ColorField";
 import { useState } from "react";
 
@@ -46,6 +47,8 @@ const SettingsButton = ({ settings, onSettingsChange }) => {
           <div className="space-y-3">
             <MapRotationControl settings={settings}
               onChange={value => onSettingsChange({ ...settings, mapRotation: value })} />
+            <PlayerColorSettings settings={settings}
+              onChange={(key, value) => onSettingsChange({ ...settings, [key]: value })} />
 
             {/* Dot size */}
             <div>

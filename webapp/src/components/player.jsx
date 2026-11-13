@@ -1,5 +1,6 @@
 import { useRef, useState, useEffect } from "react";
-import { getRadarPosition, playerColors } from "../utilities/utilities";
+import { getRadarPosition } from "../utilities/utilities";
+import { getPlayerColor } from "../utilities/playerColors";
 
 
 let playerRotations = [];
@@ -57,6 +58,7 @@ const Player = ({ playerData, mapData, radarImage, localTeam, averageLatency, se
 
   // "Show Allies" off: only enemies (and your own dot, as a reference point)
   const isAlly = playerData.m_team == localTeam;
+  const color = getPlayerColor(playerData, localTeam, settings);
   if (isAlly && !playerData.m_is_local && !(settings.showAllies ?? true)) return null;
 
   return (
@@ -114,10 +116,10 @@ const Player = ({ playerData, mapData, radarImage, localTeam, averageLatency, se
         <div
           className={`w-full h-full rounded-[50%_50%_50%_0%] rotate-[315deg]`}
           style={{
-            backgroundColor: playerData.m_team == localTeam ? `#4ade80` : `#ef4444`,
+            backgroundColor: color,
             opacity: `${(playerData.m_is_dead && `0.8`) || (invalidPosition && `0`) || `1`}`,
-            border: playerData.m_team == localTeam ? `2px solid #22c55e` : `2px solid #dc2626`,
-            filter: `drop-shadow(0 0 4px ${playerData.m_team == localTeam ? `#4ade80` : `#ef4444`})`,
+            border: `2px solid ${color}`,
+            filter: `drop-shadow(0 0 4px ${color})`,
           }}
         />
 

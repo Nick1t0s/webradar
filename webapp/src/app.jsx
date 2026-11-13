@@ -4,6 +4,8 @@ import "./app.css";
 import PlayerCard from "./components/playercard";
 import Radar from "./components/radar";
 import MapRotationControl from "./components/MapRotationControl";
+import PlayerColorSettings from "./components/PlayerColorSettings";
+import { PLAYER_COLOR_DEFAULTS } from "./utilities/playerColors";
 import { getLatency, Latency } from "./components/latency";
 import MaskedIcon from "./components/maskedicon";
 import EspOverlay from "./components/EspOverlay";
@@ -41,6 +43,7 @@ if (IS_ESP) {
 
 
 const DEFAULT_SETTINGS = {
+  ...PLAYER_COLOR_DEFAULTS,
   dotSize: 1,
   bombSize: 0.5,
   showAllies: true,
@@ -146,6 +149,7 @@ const OverlaySettingsPopup = ({ settings, setSettings, onClose }) => {
       </div>
 
       <MapRotationControl settings={settings} onChange={value => setVal("mapRotation", value)} />
+      <PlayerColorSettings settings={settings} onChange={setVal} />
 
       {/* Sliders — uncontrolled (defaultValue) + onInput for live updates */}
       {[
