@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { getRadarTransform, normalizeRotation } from "../src/utilities/radarViewport.js";
+import { getNearestRotation, getRadarTransform, normalizeRotation } from "../src/utilities/radarViewport.js";
 
 test("the full map fits portrait, landscape and small overlay frames at every angle", () => {
   for (const [width, height] of [[1080, 1920], [1920, 1080], [390, 844], [320, 240]]) {
@@ -39,4 +39,35 @@ test("rotation wraps and invalid stored values fall back to a usable viewport", 
     rotation: 0, fit: 1, zoom: 1, tx: 0, ty: 0,
   });
   assert.equal(getRadarTransform(800, { zoom: 10 }).zoom, 4);
+});
+
+test("heading-up rotates the local view vector upwards at every game yaw", () => {
+  for (let yaw = -180; yaw <= 360; yaw++) {
+    const { rotation, fit } = getRadarTransform(800, { followView: true, mapRotation: 37 }, null, { m_eye_angle: yaw });
+    const heading = yaw * Math.PI / 180;
+    const angle = rotation * Math.PI / 180;
+    const x = Math.cos(heading), y = -Math.sin(heading);
+    assert.ok(Math.abs(x * Math.cos(angle) - y * Math.sin(angle)) < 1e-10);
+    assert.ok(Math.abs(x * Math.sin(angle) + y * Math.cos(angle) + 1) < 1e-10);
+    assert.equal(fit, Math.SQRT1_2);
+    assert.ok(fit * (Math.abs(Math.cos(angle)) + Math.abs(Math.sin(angle))) <= 1 + 1e-10);
+  }
+});
+
+test("missing, dead and invalid local views use the saved manual angle", () => {
+  const settings = { followView: true, mapRotation: 42 };
+  for (const player of [undefined, null, {}, { m_eye_angle: null }, { m_eye_angle: NaN },
+    { m_eye_angle: Infinity }, { m_eye_angle: 90, m_is_dead: true }]) {
+    assert.equal(getRadarTransform(800, settings, null, player).rotation, 42);
+  }
+  assert.equal(getRadarTransform(800, { ...settings, followView: false }, null, { m_eye_angle: 90 }).rotation, 42);
+});
+
+test("view rotation and marker rotation cross angular boundaries by the shortest path", () => {
+  assert.equal(getNearestRotation(179, -179), 181);
+  assert.equal(getNearestRotation(-179, 179), -181);
+  assert.equal(getNearestRotation(359, 1), 361);
+  assert.equal(getNearestRotation(1, 359), -1);
+  assert.equal(getNearestRotation(1080, 1), 1081);
+  assert.equal(getNearestRotation(-1080, 359), -1081);
 });

@@ -1,6 +1,7 @@
 import { useRef, useState, useEffect } from "react";
 import { getRadarPosition } from "../utilities/utilities";
 import { getPlayerColor } from "../utilities/playerColors";
+import { getNearestRotation } from "../utilities/radarViewport";
 
 
 let playerRotations = [];
@@ -8,9 +9,7 @@ const calculatePlayerRotation = (playerData) => {
   const playerViewAngle = 270 - playerData.m_eye_angle;
   const idx = playerData.m_idx;
 
-  playerRotations[idx] = (playerRotations[idx] || 0) % 360;
-  playerRotations[idx] +=
-    ((playerViewAngle - playerRotations[idx] + 540) % 360) - 180;
+  playerRotations[idx] = getNearestRotation(playerRotations[idx] || 0, playerViewAngle);
 
   return playerRotations[idx];
 };
@@ -73,38 +72,41 @@ const Player = ({ playerData, mapData, radarImage, localTeam, averageLatency, se
         zIndex: `${(playerData.m_is_dead && `0`) || `1`}`,
       }}
     >
-      {/* Name above the dot — outside masked/rotating container. Enemies and
-          teammates (you included) have separate toggles. */}
-      {(isAlly
-        ? (settings.showAllyNames ?? false)
-        : (settings.showEnemyNames ?? true)) && (
-        <div className="absolute bottom-full left-1/2 -translate-x-1/2 -translate-y-1 text-center" style={{ whiteSpace: "nowrap", zIndex: 10 }}>
-          <span className="text-xs text-white" style={{ textShadow: "0 0 3px #000, 0 0 3px #000" }}>
-            {playerData.m_name}
-          </span>
-        </div>
-      )}
+      <div className="radar-upright absolute inset-0" style={{ pointerEvents: "none", zIndex: 2 }}>
+        {/* Name above the dot — outside masked/rotating container. Enemies and
+            teammates (you included) have separate toggles. */}
+        {(isAlly
+          ? (settings.showAllyNames ?? false)
+          : (settings.showEnemyNames ?? true)) && (
+          <div className="absolute bottom-full left-1/2 -translate-x-1/2 -translate-y-1 text-center" style={{ whiteSpace: "nowrap", zIndex: 10 }}>
+            <span className="text-xs text-white" style={{ textShadow: "0 0 3px #000, 0 0 3px #000" }}>
+              {playerData.m_name}
+            </span>
+          </div>
+        )}
 
-      {/* Stacked maps: ▲ / ▼ when this player is higher / lower than you (other level, boost, high ground); ally / enemy toggles. */}
-      {heightMarker && !playerData.m_is_dead && (isAlly ? (settings.showAllyHeightMarker ?? true) : (settings.showEnemyHeightMarker ?? true)) && (
-        <div
-          className="absolute"
-          style={{
-            left: "100%", top: 0, transform: "translate(-20%, -70%)",
-            fontSize: `${scaledSize * 0.9 * (settings.heightMarkerScale ?? 1)}px`,
-            lineHeight: 1, fontWeight: 700, pointerEvents: "none", zIndex: 10,
-            color: settings.heightMarkerColor ?? "#ffffff",
-            textShadow: "0 0 2px #000, 0 0 2px #000, 0 0 3px #000",
-          }}
-        >
-          {heightMarker === "above" ? "▲" : "▼"}
-        </div>
-      )}
+        {/* Stacked maps: ▲ / ▼ when this player is higher / lower than you (other level, boost, high ground); ally / enemy toggles. */}
+        {heightMarker && !playerData.m_is_dead && (isAlly ? (settings.showAllyHeightMarker ?? true) : (settings.showEnemyHeightMarker ?? true)) && (
+          <div
+            className="absolute"
+            style={{
+              left: "100%", top: 0, transform: "translate(-20%, -70%)",
+              fontSize: `${scaledSize * 0.9 * (settings.heightMarkerScale ?? 1)}px`,
+              lineHeight: 1, fontWeight: 700, pointerEvents: "none", zIndex: 10,
+              color: settings.heightMarkerColor ?? "#ffffff",
+              textShadow: "0 0 2px #000, 0 0 2px #000, 0 0 3px #000",
+            }}
+          >
+            {heightMarker === "above" ? "▲" : "▼"}
+          </div>
+        )}
+      </div>
 
       {/* Rotating container — WebkitMask lives here for death cross */}
       <div
         style={{
-          transform: `rotate(${(playerData.m_is_dead && `0`) || playerRotation}deg)`,
+          transform: playerData.m_is_dead
+            ? "rotate(var(--radar-counter-rotation, 0deg))" : `rotate(${playerRotation}deg)`,
           width: `${scaledSize}px`,
           height: `${scaledSize}px`,
           transition: `transform ${averageLatency}ms linear`,

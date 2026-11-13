@@ -132,24 +132,26 @@ const DroppedItemLayer = ({ items, mapData, radarImage, settings }) => {
             }} />
 
             {/* Label badge */}
-            <span style={{
-              display:         "block",
-              fontSize:        Math.round(8 * scale),
-              fontWeight:      800,
-              letterSpacing:   "0.05em",
-              lineHeight:      1,
-              color:           colors.text,
-              background:      colors.bg,
-              border:          `1px solid ${colors.border}`,
-              borderRadius:    3,
-              padding:         `${Math.round(2 * scale)}px ${Math.round(3 * scale + 1)}px`,
-              whiteSpace:      "nowrap",
-              textShadow:      "0 1px 2px rgba(0,0,0,0.7)",
-              boxShadow:       "0 2px 5px rgba(0,0,0,0.55)",
-              transform:       `translateY(-10px)`,
-            }}>
-              {label}
-            </span>
+            <div className="radar-upright">
+              <span style={{
+                display:         "block",
+                fontSize:        Math.round(8 * scale),
+                fontWeight:      800,
+                letterSpacing:   "0.05em",
+                lineHeight:      1,
+                color:           colors.text,
+                background:      colors.bg,
+                border:          `1px solid ${colors.border}`,
+                borderRadius:    3,
+                padding:         `${Math.round(2 * scale)}px ${Math.round(3 * scale + 1)}px`,
+                whiteSpace:      "nowrap",
+                textShadow:      "0 1px 2px rgba(0,0,0,0.7)",
+                boxShadow:       "0 2px 5px rgba(0,0,0,0.55)",
+                transform:       `translateY(-10px)`,
+              }}>
+                {label}
+              </span>
+            </div>
           </div>
         );
       })}

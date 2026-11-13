@@ -63,6 +63,7 @@ const DEFAULT_SETTINGS = {
   showUtilEmoji: false,   //   emoji (💨 🔥 ⚡ ...)
   showCallouts: true,
   mapRotation: 0,         // clockwise degrees, shared by browser and minimap
+  followView: false,      // keep the local player's view facing up
   zoom: 1,                // 1 = whole map
   followMe: false,        // keep the local player centred (needs zoom > 1)
   bombColor: "#ff4500",
@@ -148,7 +149,8 @@ const OverlaySettingsPopup = ({ settings, setSettings, onClose }) => {
         <span onClick={onClose} style={{ color:"#f55", cursor:"pointer", fontSize:18, lineHeight:1, padding:"0 2px" }}>×</span>
       </div>
 
-      <MapRotationControl settings={settings} onChange={value => setVal("mapRotation", value)} />
+      <MapRotationControl settings={settings} onChange={value => setVal("mapRotation", value)}
+        onFollowViewChange={value => setVal("followView", value)} />
       <PlayerColorSettings settings={settings} onChange={setVal} />
 
       {/* Sliders — uncontrolled (defaultValue) + onInput for live updates */}

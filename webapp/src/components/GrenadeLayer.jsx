@@ -109,7 +109,7 @@ const Badge = ({ label, cfg, style = {} }) => {
   if (!label) return null;
   const emojiOnly = !/[A-Za-z]/.test(label);
   return (
-  <span style={{
+  <span className="radar-upright" style={{
     display:         "inline-block",
     fontSize:        9,
     fontWeight:      800,

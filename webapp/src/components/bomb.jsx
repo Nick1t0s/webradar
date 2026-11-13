@@ -60,6 +60,7 @@ const Bomb = ({ bombData, mapData, radarImage, localTeam, averageLatency, settin
 
       {/* The C4 icon itself */}
       <div
+        className="radar-upright"
         style={{
           position: "absolute",
           inset: 0,

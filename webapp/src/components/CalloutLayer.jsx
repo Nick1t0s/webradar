@@ -3,7 +3,6 @@ import { useEffect, useState } from "react";
 // Callouts are bundled locally in public/data/{map}/callouts.json
 
 const CalloutLayer = ({ mapName, radarImage, enabled = true }) => {
-  if (!enabled) return null;
   const [callouts, setCallouts] = useState([]);
 
   useEffect(() => {
@@ -15,7 +14,7 @@ const CalloutLayer = ({ mapName, radarImage, enabled = true }) => {
       .catch(() => setCallouts([])); // map not supported, silently hide
   }, [mapName]);
 
-  if (!radarImage || callouts.length === 0) return null;
+  if (!enabled || !radarImage || callouts.length === 0) return null;
 
   // Use offsetWidth/offsetHeight — gives size relative to element itself,
   // which is what we need for absolute positioning inside the radar div.
@@ -39,7 +38,9 @@ const CalloutLayer = ({ mapName, radarImage, enabled = true }) => {
           }}
         >
           <span
+            className="radar-upright"
             style={{
+              display: "inline-block",
               fontSize: "0.55rem",
               fontWeight: 700,
               color: "#fff",

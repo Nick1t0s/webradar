@@ -46,7 +46,8 @@ const SettingsButton = ({ settings, onSettingsChange }) => {
 
           <div className="space-y-3">
             <MapRotationControl settings={settings}
-              onChange={value => onSettingsChange({ ...settings, mapRotation: value })} />
+              onChange={value => onSettingsChange({ ...settings, mapRotation: value })}
+              onFollowViewChange={value => onSettingsChange({ ...settings, followView: value })} />
             <PlayerColorSettings settings={settings}
               onChange={(key, value) => onSettingsChange({ ...settings, [key]: value })} />
 

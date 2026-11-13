@@ -22,6 +22,15 @@ custom colour. Defaults are green for yourself and teammates, red for enemies.
 These preferences are saved in the browser and also work in minimap mode;
 no helper/backend changes are needed.
 
+Enable **Settings → Rotate with view** to keep your local player's view facing
+up. Turning is smoothed across the 0°/360° boundary; the map uses a constant fit
+so it stays inside the window without changing size as you turn. The manual
+angle is preserved and restored when this mode is disabled (also used when no
+living local player with a valid view angle is available). Combine with Zoom
+and Follow Me to keep yourself centred. The option is saved and works in minimap
+settings too. Player names, height markers, map callouts, grenade labels, dropped
+weapon labels and the C4 icon stay upright for both manual and automatic rotation.
+
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
 Currently, two official plugins are available:

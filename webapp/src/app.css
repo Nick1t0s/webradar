@@ -88,9 +88,17 @@ body {
   justify-content: center;
 }
 
-.radar-rotation, .radar-clip, .radar-content {
+.radar-fit, .radar-rotation, .radar-clip, .radar-content {
   position: absolute;
   inset: 0;
+}
+
+.radar-rotation, .radar-upright {
+  transition: var(--radar-motion, none);
+}
+
+.radar-upright {
+  transform: rotate(var(--radar-counter-rotation, 0deg));
 }
 
 .radar-content {
@@ -127,4 +135,24 @@ body {
 
 .map-rotation-buttons button:hover {
   background: #1e3a54;
+}
+
+.map-follow-view {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  padding: 0.5rem 0;
+  margin-bottom: 0.5rem;
+}
+
+.map-follow-view-hint {
+  color: #8ab;
+  font-size: 0.7rem;
+  margin-bottom: 0.5rem;
+}
+
+.map-rotation-control :disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
