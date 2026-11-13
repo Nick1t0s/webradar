@@ -1,5 +1,6 @@
 import MapRotationControl from "./MapRotationControl";
 import PlayerColorSettings from "./PlayerColorSettings";
+import ViewerSelector from "./ViewerSelector";
 import ColorField from "./ColorField";
 import { useState } from "react";
 
@@ -23,7 +24,9 @@ const Toggle = ({ checked, onToggle, label }) => (
   </div>
 );
 
-const SettingsButton = ({ settings, onSettingsChange }) => {
+const SettingsButton = ({ settings, onSettingsChange,
+  viewer, // eslint-disable-line react/prop-types
+}) => {
   const [isOpen, setIsOpen] = useState(false);
   const toggle = (key) => onSettingsChange({ ...settings, [key]: !settings[key] });
 
@@ -44,7 +47,9 @@ const SettingsButton = ({ settings, onSettingsChange }) => {
         >
           <h3 className="text-radar-primary text-lg font-semibold mb-4">Radar Settings</h3>
 
-          <div className="space-y-3">
+          {/* eslint-disable-next-line react/prop-types */}
+          <div key={viewer.id} className="space-y-3">
+            <ViewerSelector viewer={viewer} />
             <MapRotationControl settings={settings}
               onChange={value => onSettingsChange({ ...settings, mapRotation: value })}
               onFollowViewChange={value => onSettingsChange({ ...settings, followView: value })} />
@@ -182,7 +187,7 @@ const SettingsButton = ({ settings, onSettingsChange }) => {
               <Toggle label="Death Cross"      checked={!!(settings.showDeathCross ?? true)}    onToggle={() => toggle("showDeathCross")} />
               <Toggle label="Bomb Pulse"       checked={!!(settings.bombHighlight ?? true)}     onToggle={() => toggle("bombHighlight")} />
               <Toggle label="Dropped Weapons"  checked={!!(settings.showDropped ?? true)}       onToggle={() => toggle("showDropped")} />
-              <Toggle label="Auto Update"      checked={!!(settings.autoUpdate ?? true)}        onToggle={() => toggle("autoUpdate")} />
+              <Toggle label="Helper Auto Update (shared)" checked={!!(settings.autoUpdate ?? true)} onToggle={() => toggle("autoUpdate")} />
             </div>
 
             {/* Smoke color */}

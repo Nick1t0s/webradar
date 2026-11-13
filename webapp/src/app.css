@@ -156,3 +156,41 @@ body {
   opacity: 0.45;
   cursor: not-allowed;
 }
+
+.viewer-selector {
+  color: #8ab;
+  font-size: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.viewer-selector label {
+  display: block;
+  margin-bottom: 0.4rem;
+}
+
+.viewer-selector select {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid #6492b466;
+  border-radius: 0.35rem;
+  padding: 0.4rem;
+  color: #b1d0e7;
+  background: #142837;
+}
+
+.viewer-selector p {
+  margin-top: 0.4rem;
+  font-size: 0.65rem;
+}
+
+.viewer-missing {
+  position: absolute;
+  top: 3rem;
+  left: 0.75rem;
+  right: 0.75rem;
+  z-index: 40;
+  text-align: center;
+  color: #fbbf24;
+  font-size: 0.75rem;
+  pointer-events: none;
+}

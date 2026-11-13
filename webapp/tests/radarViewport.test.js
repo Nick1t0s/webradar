@@ -20,14 +20,17 @@ test("the full map fits portrait, landscape and small overlay frames at every an
   }
 });
 
-test("following centres the player before rotation while keeping zoom inside map edges", () => {
+test("following centres the player before rotation, including map edges and Zoom 1", () => {
   for (const angle of [0, 45, 90, 180, 270]) {
     const centred = getRadarTransform(800, { zoom: 2, mapRotation: angle }, { x: 0.4, y: 0.6 });
     assert.equal(centred.tx + 0.4 * 800 * centred.zoom, 400);
     assert.equal(centred.ty + 0.6 * 800 * centred.zoom, 400);
     const edge = getRadarTransform(800, { zoom: 2, mapRotation: angle }, { x: 0, y: 1 });
-    assert.equal(edge.tx, 0);
-    assert.equal(edge.ty, -800);
+    assert.equal(edge.tx, 400);
+    assert.equal(edge.ty, -1200);
+    const whole = getRadarTransform(800, { zoom: 1, mapRotation: angle }, { x: 0.1, y: 0.9 });
+    assert.equal(whole.tx + 0.1 * 800, 400);
+    assert.equal(whole.ty + 0.9 * 800, 400);
   }
 });
 

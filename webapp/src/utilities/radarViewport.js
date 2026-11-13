@@ -22,7 +22,11 @@ export const getRadarTransform = (size, settings, position, localPlayer) => {
   const requestedZoom = Number(settings?.zoom ?? 1);
   const zoom = Number.isFinite(requestedZoom) ? Math.min(4, Math.max(1, requestedZoom)) : 1;
   const min = size * (1 - zoom);
-  const translate = (coordinate) => Math.min(0, Math.max(min, size / 2 - coordinate * size * zoom));
+  // Following keeps the selected player exactly at the centre, even at edges.
+  // A full-map view (no follow position) stays centred on the map as before.
+  const translate = (coordinate) => position
+    ? size / 2 - coordinate * size * zoom
+    : Math.min(0, Math.max(min, size / 2 - coordinate * size * zoom));
   return {
     rotation, fit, zoom,
     tx: translate(position?.x ?? 0.5),

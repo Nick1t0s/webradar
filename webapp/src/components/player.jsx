@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { getRadarPosition } from "../utilities/utilities";
 import { getPlayerColor } from "../utilities/playerColors";
 import { getNearestRotation } from "../utilities/radarViewport";
@@ -19,9 +19,6 @@ const Player = ({ playerData, mapData, radarImage, localTeam, averageLatency, se
   const radarPosition = getRadarPosition(mapData, playerData.m_position) || { x: 0, y: 0 };
   const invalidPosition = radarPosition.x <= 0 && radarPosition.y <= 0;
 
-  const playerRef = useRef();
-  const playerBounding = (playerRef.current &&
-    { width: playerRef.current.offsetWidth, height: playerRef.current.offsetHeight }) || { width: 0, height: 0 };
   const playerRotation = calculatePlayerRotation(playerData);
 
   const radarImageBounding = (radarImage !== undefined &&
@@ -47,8 +44,8 @@ const Player = ({ playerData, mapData, radarImage, localTeam, averageLatency, se
   const effectivePosition = playerData.m_is_dead ? lastKnownPosition || { x: 0, y: 0 } : radarPosition;
 
   const radarImageTranslation = {
-    x: radarImageBounding.width * effectivePosition.x - playerBounding.width * 0.5,
-    y: radarImageBounding.height * effectivePosition.y - playerBounding.height * 0.5,
+    x: radarImageBounding.width * effectivePosition.x - scaledSize * 0.5,
+    y: radarImageBounding.height * effectivePosition.y - scaledSize * 0.5,
   };
 
   // When death cross is disabled, hide dead players entirely
@@ -63,7 +60,6 @@ const Player = ({ playerData, mapData, radarImage, localTeam, averageLatency, se
   return (
     <div
       className={`absolute left-0 top-0`}
-      ref={playerRef}
       style={{
         width: `${scaledSize}px`,
         height: `${scaledSize}px`,

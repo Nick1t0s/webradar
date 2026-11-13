@@ -1,5 +1,5 @@
 import ReactDOM from "react-dom/client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import "./app.css";
 import PlayerCard from "./components/playercard";
 import Radar from "./components/radar";
@@ -11,6 +11,9 @@ import MaskedIcon from "./components/maskedicon";
 import EspOverlay from "./components/EspOverlay";
 import ColorField from "./components/ColorField";
 import StatusPill from "./components/StatusPill";
+import ViewerSelector from "./components/ViewerSelector";
+import { useViewerPreferences } from "./hooks/useViewerPreferences";
+import { getViewerPerspective } from "./utilities/viewerPerspective";
 import { getLocalTeam } from "./utilities/utilities";
 
 /* change this to '1' if you want to use offline (your own pc only) */
@@ -65,7 +68,7 @@ const DEFAULT_SETTINGS = {
   mapRotation: 0,         // clockwise degrees, shared by browser and minimap
   followView: false,      // keep the local player's view facing up
   zoom: 1,                // 1 = whole map
-  followMe: false,        // keep the local player centred (needs zoom > 1)
+  followMe: false,        // keep the selected player exactly centred
   bombColor: "#ff4500",
   smokeColor: "#2c3138",  // smoke ring + (see-through) fill
   mollyColor: "#ff6a00",  // molly flames + range circle
@@ -74,16 +77,6 @@ const DEFAULT_SETTINGS = {
   showDropped: true,
   droppedOpacity: 1,
   autoUpdate: true,
-};
-
-// Always merge saved settings with defaults so new keys are never undefined
-const loadSettings = () => {
-  try {
-    const saved = localStorage.getItem("radarSettings");
-    return saved ? { ...DEFAULT_SETTINGS, ...JSON.parse(saved) } : DEFAULT_SETTINGS;
-  } catch {
-    return DEFAULT_SETTINGS;
-  }
 };
 
 // Module-level WS ref so settings panels can send messages to the Python backend
@@ -130,7 +123,9 @@ const SMOKE_PRESETS = ["#2c3138","#5c636c","#9aa3ad","#e5e7eb","#00cfff"];
 const LEVEL_PRESETS = ["#ffffff","#ffdd00","#00cfff","#ff3df0","#a3ff00"];
 const MOLLY_PRESETS = ["#ff6a00","#ffb000","#ff2d2d","#ff3df0","#a3ff00"];
 
-const OverlaySettingsPopup = ({ settings, setSettings, onClose }) => {
+const OverlaySettingsPopup = ({ settings, setSettings, onClose,
+  viewer, // eslint-disable-line react/prop-types
+}) => {
   const toggle = (key) => setSettings(s => ({ ...s, [key]: !s[key] }));
   const setVal  = (key, val) => setSettings(s => ({ ...s, [key]: val }));
 
@@ -149,6 +144,7 @@ const OverlaySettingsPopup = ({ settings, setSettings, onClose }) => {
         <span onClick={onClose} style={{ color:"#f55", cursor:"pointer", fontSize:18, lineHeight:1, padding:"0 2px" }}>×</span>
       </div>
 
+      <ViewerSelector viewer={viewer} />
       <MapRotationControl settings={settings} onChange={value => setVal("mapRotation", value)}
         onFollowViewChange={value => setVal("followView", value)} />
       <PlayerColorSettings settings={settings} onChange={setVal} />
@@ -204,7 +200,7 @@ const OverlaySettingsPopup = ({ settings, setSettings, onClose }) => {
       <SettingRow label="Death Cross"    checked={!!settings.showDeathCross} onToggle={() => toggle("showDeathCross")} />
       <SettingRow label="Bomb Pulse"     checked={!!settings.bombHighlight}  onToggle={() => toggle("bombHighlight")} />
       <SettingRow label="Dropped Weapons" checked={!!(settings.showDropped ?? true)} onToggle={() => toggle("showDropped")} />
-      <SettingRow label="Auto Update"    checked={!!(settings.autoUpdate ?? true)} onToggle={() => toggle("autoUpdate")} />
+      <SettingRow label="Helper Auto Update (shared)" checked={!!(settings.autoUpdate ?? true)} onToggle={() => toggle("autoUpdate")} />
 
       {/* Smoke color */}
       <div style={{ marginTop:8 }}>
@@ -343,8 +339,16 @@ const App = () => {
   const [grenades, setGrenades] = useState([]);
   const [dropped, setDropped]   = useState([]);
   const [viewMatrix, setViewMatrix] = useState([]);
-  const [settings, setSettings] = useState(loadSettings());
-  const lastAutoUpdate = useRef(null);
+  const { viewerId, settings, setSettings: saveSettings, selectViewer } = useViewerPreferences(DEFAULT_SETTINGS);
+  const setSettings = update => {
+    const next = typeof update === "function" ? update(settings) : update;
+    saveSettings(next);
+    // Only an explicit helper-control edit changes this shared server setting.
+    // Joining, choosing a player and changing personal display settings send nothing.
+    if (next.autoUpdate !== settings.autoUpdate) {
+      sendToBackend({ type: "set_auto_update", value: !!next.autoUpdate });
+    }
+  };
   const [serverAddr, setServerAddr] = useState(null);
   const [tailscaleAddr, setTailscaleAddr] = useState(null);
   const [funnelAddr, setFunnelAddr] = useState(null);
@@ -352,17 +356,6 @@ const App = () => {
   const [bannerOpened, setBannerOpened] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [status, setStatus] = useState({ state: "connecting", detail: "Connecting to the radar helper" });
-
-  // Persist settings and sync auto-update preference to backend
-  useEffect(() => {
-    localStorage.setItem("radarSettings", JSON.stringify(settings));
-    // Only when the preference changes; every other toggle used to re-send it.
-    const au = !!(settings.autoUpdate ?? true);
-    if (lastAutoUpdate.current !== au) {
-      lastAutoUpdate.current = au;
-      sendToBackend({ type: "set_auto_update", value: au });
-    }
-  }, [settings]);
 
   useEffect(() => {
     const wsUrl = NGROK_WS_URL
@@ -389,8 +382,6 @@ const App = () => {
 
       ws.onopen = () => {
         console.info("WS connected →", wsUrl);
-        // The preference is only re-sent when it changes, so tell a fresh connection.
-        if (lastAutoUpdate.current !== null) sendToBackend({ type: "set_auto_update", value: lastAutoUpdate.current });
       };
 
       ws.onclose = () => {
@@ -468,8 +459,9 @@ const App = () => {
 
 
 
-  // Ally/enemy is measured against the local player's own team in this frame.
-  const effectiveLocalTeam = getLocalTeam(playerArray, localTeam);
+  const perspective = useMemo(() => getViewerPerspective(playerArray, viewerId, localTeam), [playerArray, viewerId, localTeam]);
+  const viewer = { id: viewerId, players: playerArray, onChange: selectViewer };
+  const effectiveLocalTeam = perspective.localTeam;
 
   // ── ESP overlay mode ─────────────────────────────────────────────────────
   if (IS_ESP) {
@@ -482,7 +474,7 @@ const App = () => {
       }}>
         <EspOverlay
           playerArray={playerArray}
-          localTeam={effectiveLocalTeam}
+          localTeam={getLocalTeam(playerArray, localTeam)}
           viewMatrix={viewMatrix}
           bombData={bombData}
           settings={settings}
@@ -508,21 +500,26 @@ const App = () => {
         {/* Settings popup — renders over everything when open */}
         {settingsOpen && (
           <OverlaySettingsPopup
+            key={viewerId}
             settings={settings}
             setSettings={setSettings}
+            viewer={viewer}
             onClose={() => setSettingsOpen(false)}
           />
         )}
 
         {/* ── Drag bar ── */}
         <DragBar bombData={bombData} onSettingsClick={() => setSettingsOpen(o => !o)} />
+        {perspective.missing && playerArray.length > 0 && (
+          <p className="viewer-missing" role="status">Selected player is not in this match. Choose Your Player in Settings.</p>
+        )}
 
         {/* ── Radar ── */}
         <div style={{ flex: 1, minHeight: 0, overflow: "hidden", position: "relative" }}>
           {status.state !== "ok" && <StatusPill status={status} compact onRefresh={refreshOffsets} />}
           {mapData && playerArray.length > 0 ? (
             <Radar
-              playerArray={playerArray}
+              playerArray={perspective.players}
               radarImage={`./data/${mapData.name}/radar.png`}
               mapData={mapData}
               localTeam={effectiveLocalTeam}
@@ -585,7 +582,11 @@ const App = () => {
           value={averageLatency}
           settings={settings}
           setSettings={setSettings}
+          viewer={viewer}
         />
+        {perspective.missing && playerArray.length > 0 && (
+          <p className="viewer-missing" role="status">Selected player is not in this match. Choose Your Player in Settings.</p>
+        )}
 
         <div className="radar-layout">
           <ul id="terrorist" className="radar-team flex-col justify-center gap-2 m-0 p-0 overflow-hidden max-h-full">
@@ -602,7 +603,7 @@ const App = () => {
 
           {(playerArray.length > 0 && mapData && (
             <Radar
-              playerArray={playerArray}
+              playerArray={perspective.players}
               radarImage={`./data/${mapData.name}/radar.png`}
               mapData={mapData}
               localTeam={effectiveLocalTeam}

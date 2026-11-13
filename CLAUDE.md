@@ -59,6 +59,17 @@ Entry: `webapp/src/app.jsx`
 
 Settings are persisted to `localStorage` under key `radarSettings` and merged over `DEFAULT_SETTINGS` in `app.jsx`. Notable ones: PLAYERS group (`showAllies`, `showAllyNames`, `showEnemyNames`, `showEnemyHeightMarker`, `showAllyHeightMarker`), utility display (`showUtilCircle`/`Name`/`Emoji`), `zoom` (1–4) and `followMe` (centre the local player). Height marker: a ▲/▼ on any player at least `heightMarkerThreshold` units (default 48; a boosted player is ~54–72) above/below the local player, or on the other level of a stacked map (`getHeightRelation`); size and colour via `heightMarkerScale`/`heightMarkerColor`. Ally/enemy colour is measured against `getLocalTeam()` (the local player's own team) so a team switch can't invert it. `set_auto_update` is sent to the helper only when `autoUpdate` changes. Settings UI exists twice: `SettingsButton.jsx` (browser) and the popup in `app.jsx` (minimap) — keep them in step.
 
+Browser viewer identity is separate from the helper's `m_is_local`: **Your Player**
+in both settings panels selects a Steam ID (bots use slot + name).
+`getViewerPerspective` derives a new player array with the viewer's `m_is_local`
+and team; only radar/minimap use this array. ESP retains the raw helper camera.
+`useViewerPreferences` saves per-player display profiles under
+`radarSettings:viewer:<identity>`, preserving `radarSettings` for automatic helper
+mode. Selection is remembered per tab in sessionStorage and as the last selection
+in localStorage. Missing selected players must never fall back to the helper.
+Joining or changing personal profiles must not send `set_auto_update`; this shared
+helper command is sent only for an explicit edit of its labelled shared control.
+
 ## helper (Python memory reader)
 
 `helper/linux/` and `helper/windows/` are pure Python — no Visual Studio required.

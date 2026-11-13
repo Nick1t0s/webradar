@@ -59,7 +59,7 @@ const Radar = ({
       }}>
         <div className="radar-fit" style={{ transform: `scale(${fit})` }}>
           <div className="radar-rotation" style={{ transform: `rotate(${rotation}deg)` }}>
-            <div className="radar-clip" style={{ overflow: zoom > 1 ? "hidden" : "visible" }}>
+            <div className="radar-clip" style={{ overflow: zoom > 1 || position ? "hidden" : "visible" }}>
               <div className="radar-content" style={{ transform: `translate(${tx}px, ${ty}px) scale(${zoom})` }}>
                 <img className="w-full h-full" src={radarSrc} alt={`${mapData?.name ?? "Map"} radar`} />
 
