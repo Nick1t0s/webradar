@@ -1,0 +1,21 @@
+export const normalizeRotation = (value) => {
+  const angle = Number(value);
+  return Number.isFinite(angle) ? ((angle % 360) + 360) % 360 : 0;
+};
+
+// Fit the entire rotated square, including its corners, inside the viewport.
+// Zoom and follow operate in map coordinates before this rotation is applied.
+export const getRadarTransform = (size, settings, position) => {
+  const rotation = normalizeRotation(settings?.mapRotation ?? 0);
+  const radians = rotation * Math.PI / 180;
+  const fit = 1 / (Math.abs(Math.cos(radians)) + Math.abs(Math.sin(radians)));
+  const requestedZoom = Number(settings?.zoom ?? 1);
+  const zoom = Number.isFinite(requestedZoom) ? Math.min(4, Math.max(1, requestedZoom)) : 1;
+  const min = size * (1 - zoom);
+  const translate = (coordinate) => Math.min(0, Math.max(min, size / 2 - coordinate * size * zoom));
+  return {
+    rotation, fit, zoom,
+    tx: translate(position?.x ?? 0.5),
+    ty: translate(position?.y ?? 0.5),
+  };
+};

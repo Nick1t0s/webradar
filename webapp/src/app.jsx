@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import "./app.css";
 import PlayerCard from "./components/playercard";
 import Radar from "./components/radar";
+import MapRotationControl from "./components/MapRotationControl";
 import { getLatency, Latency } from "./components/latency";
 import MaskedIcon from "./components/maskedicon";
 import EspOverlay from "./components/EspOverlay";
@@ -58,6 +59,7 @@ const DEFAULT_SETTINGS = {
   showUtilName: true,     //   text label (SMK, MOL, ...)
   showUtilEmoji: false,   //   emoji (💨 🔥 ⚡ ...)
   showCallouts: true,
+  mapRotation: 0,         // clockwise degrees, shared by browser and minimap
   zoom: 1,                // 1 = whole map
   followMe: false,        // keep the local player centred (needs zoom > 1)
   bombColor: "#ff4500",
@@ -142,6 +144,8 @@ const OverlaySettingsPopup = ({ settings, setSettings, onClose }) => {
         </span>
         <span onClick={onClose} style={{ color:"#f55", cursor:"pointer", fontSize:18, lineHeight:1, padding:"0 2px" }}>×</span>
       </div>
+
+      <MapRotationControl settings={settings} onChange={value => setVal("mapRotation", value)} />
 
       {/* Sliders — uncontrolled (defaultValue) + onInput for live updates */}
       {[
@@ -508,7 +512,7 @@ const App = () => {
         <DragBar bombData={bombData} onSettingsClick={() => setSettingsOpen(o => !o)} />
 
         {/* ── Radar ── */}
-        <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
+        <div style={{ flex: 1, minHeight: 0, overflow: "hidden", position: "relative" }}>
           {status.state !== "ok" && <StatusPill status={status} compact onRefresh={refreshOffsets} />}
           {mapData && playerArray.length > 0 ? (
             <Radar
@@ -538,7 +542,7 @@ const App = () => {
 
   // ── Normal radar mode ─────────────────────────────────────────────────────
   return (
-    <div className="w-screen h-screen flex flex-col"
+    <div className="radar-app flex flex-col"
       style={{
         background: `radial-gradient(50% 50% at 50% 50%, rgba(20, 40, 55, 0.95) 0%, rgba(7, 20, 30, 0.95) 100%)`,
         backdropFilter: `blur(7.5px)`,
@@ -577,8 +581,8 @@ const App = () => {
           setSettings={setSettings}
         />
 
-        <div className={`flex items-center justify-evenly w-full h-full overflow-hidden`}>
-          <ul id="terrorist" className="lg:flex hidden flex-col justify-center gap-2 m-0 p-0 shrink-0 overflow-hidden max-h-full">
+        <div className="radar-layout">
+          <ul id="terrorist" className="radar-team flex-col justify-center gap-2 m-0 p-0 overflow-hidden max-h-full">
             {playerArray
               .filter((player) => player.m_team == 2)
               .map((player) => (
@@ -612,7 +616,7 @@ const App = () => {
 
           <ul
             id="counterTerrorist"
-            className="lg:flex hidden flex-col justify-center gap-2 m-0 p-0 shrink-0 overflow-hidden max-h-full"
+            className="radar-team flex-col justify-center gap-2 m-0 p-0 overflow-hidden max-h-full"
           >
             {playerArray
               .filter((player) => player.m_team == 3)

@@ -43,3 +43,88 @@ body {
 .banner-link:hover {
   box-shadow: 0px 2.5px 0 0 #1E3A54;
 }
+
+.radar-app {
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
+}
+
+.radar-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  padding: 3rem 0.75rem;
+  gap: 0.75rem;
+  overflow: hidden;
+}
+
+.radar-team {
+  display: none;
+  min-width: 0;
+}
+
+/* Portrait screens give the map the full width instead of reserving sidebars. */
+@media (min-width: 1024px) and (orientation: landscape) {
+  .radar-layout {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 3fr) minmax(0, 1fr);
+  }
+  .radar-team {
+    display: flex;
+  }
+}
+
+.radar-viewport {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.radar-rotation, .radar-clip, .radar-content {
+  position: absolute;
+  inset: 0;
+}
+
+.radar-content {
+  transform-origin: 0 0;
+  transition: transform 150ms linear;
+}
+
+.map-rotation-control {
+  color: #b1d0e7;
+  font-size: 0.8rem;
+  margin-bottom: 0.75rem;
+}
+
+.map-rotation-control input {
+  display: block;
+  width: 100%;
+  margin: 0.5rem 0;
+  accent-color: #4ade80;
+  cursor: pointer;
+}
+
+.map-rotation-buttons {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.map-rotation-buttons button {
+  flex: 1;
+  padding: 0.3rem;
+  border: 1px solid #6492b466;
+  border-radius: 0.35rem;
+  background: #142837;
+}
+
+.map-rotation-buttons button:hover {
+  background: #1e3a54;
+}

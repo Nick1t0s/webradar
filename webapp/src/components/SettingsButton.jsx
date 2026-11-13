@@ -1,3 +1,4 @@
+import MapRotationControl from "./MapRotationControl";
 import ColorField from "./ColorField";
 import { useState } from "react";
 
@@ -43,6 +44,9 @@ const SettingsButton = ({ settings, onSettingsChange }) => {
           <h3 className="text-radar-primary text-lg font-semibold mb-4">Radar Settings</h3>
 
           <div className="space-y-3">
+            <MapRotationControl settings={settings}
+              onChange={value => onSettingsChange({ ...settings, mapRotation: value })} />
+
             {/* Dot size */}
             <div>
               <div className="flex justify-between items-center mb-2">
