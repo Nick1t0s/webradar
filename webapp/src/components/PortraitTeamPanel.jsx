@@ -13,6 +13,7 @@ const PortraitPlayerCard = ({ player, localTeam, settings }) => {
   const dead = isDead(player);
   const hp = dead ? 0 : Number.isFinite(player.m_health) ? Math.max(0, Math.min(100, player.m_health)) : null;
   const color = getPlayerColor(player, localTeam, settings);
+  const money = Number.isFinite(player.m_money) ? `$${moneyFormat.format(player.m_money)}` : "—";
   const weapons = player.m_weapons ?? {};
   const active = weaponName(weapons.m_active);
   const inventory = [...new Set([weapons.m_primary, weapons.m_secondary, weapons.m_active].map(weaponName).filter(Boolean))];
@@ -26,7 +27,7 @@ const PortraitPlayerCard = ({ player, localTeam, settings }) => {
       </div>
       <div className="portrait-player-stats">
         <span className="portrait-player-hp">{hp ?? "—"} HP</span>
-        <span className="portrait-player-money">{Number.isFinite(player.m_money) ? `$${moneyFormat.format(player.m_money)}` : "—"}</span>
+        <span className="portrait-player-money" title={money}>{money}</span>
       </div>
       <div className="portrait-hp-track" aria-hidden="true">
         <div style={{ width: `${hp ?? 0}%` }} />
@@ -55,7 +56,7 @@ const PortraitTeamPanel = ({ team, players, localTeam, settings }) => {
   return (
     <section className="portrait-team-panel" data-team={team} aria-label={title}>
       <div className="portrait-team-heading">
-        <h2>{title}</h2>
+        <h2 title={title}>{title}</h2>
         <span>{roster.filter(player => !isDead(player)).length}/{roster.length} alive</span>
       </div>
       <ul className="portrait-player-list" aria-label={`${TEAM_NAMES[team]} players`}>

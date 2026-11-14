@@ -18,6 +18,11 @@ Follow Me off, the map fits the remaining area without cutting off its edges.
 These rosters apply to the normal radar page; the small minimap keeps its
 map-focused layout.
 
+Cards reserve a fixed height and room for primary, secondary and active weapons.
+Equipping/throwing grenades, switching or dropping weapons, changing HP/money and
+empty inventories do not resize the team rows or radar. Long weapon names are
+truncated with their full names available on hover.
+
 Open **Settings → Map Rotation** to choose an angle, rotate 90° in either
 direction, or reset to 0°. The angle is saved in the browser and is also
 available in minimap settings. The map and all position layers rotate together;
