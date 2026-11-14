@@ -22,6 +22,14 @@ custom colour. Defaults are green for yourself and teammates, red for enemies.
 These preferences are saved in the browser and also work in minimap mode;
 no helper/backend changes are needed.
 
+Living player dots also show HP as their fill level: the player's chosen colour
+fills from screen-bottom upwards, with missing health shown in white above it.
+100 HP is fully coloured; 25 HP leaves colour in the bottom quarter. The fill
+stays upright while the player or map turns. The marker's heading, colour border,
+glow and aim-target outline are preserved. Dead-player crosses retain their
+normal colour. This works in both radar and minimap using the existing `m_health`
+field; there is no backend change or extra setting to enable.
+
 Enable **Settings → Rotate with view** to keep your local player's view facing
 up. Turning is smoothed across the 0°/360° boundary; the map uses a constant fit
 so it stays inside the window without changing size as you turn. The manual

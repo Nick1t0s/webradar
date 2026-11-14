@@ -87,6 +87,7 @@ const Radar = ({
                     averageLatency={averageLatency}
                     settings={settings}
                     aimTarget={ray?.target === player}
+                    mapRotation={rotation}
                     heightMarker={getHeightRelation(mapData, player, local, settings?.heightMarkerThreshold ?? 48)}
                   />
                 ))}

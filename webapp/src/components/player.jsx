@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { getRadarPosition } from "../utilities/utilities";
 import { getPlayerColor } from "../utilities/playerColors";
 import { getNearestRotation } from "../utilities/radarViewport";
+import PlayerHealthFill from "./PlayerHealthFill";
 
 
 let playerRotations = [];
@@ -16,6 +17,7 @@ const calculatePlayerRotation = (playerData) => {
 
 const Player = ({ playerData, mapData, radarImage, localTeam, averageLatency, settings, heightMarker,
   aimTarget = false, // eslint-disable-line react/prop-types
+  mapRotation = 0, // eslint-disable-line react/prop-types
 }) => {
   const [lastKnownPosition, setLastKnownPosition] = useState(null);
   const radarPosition = getRadarPosition(mapData, playerData.m_position) || { x: 0, y: 0 };
@@ -57,6 +59,7 @@ const Player = ({ playerData, mapData, radarImage, localTeam, averageLatency, se
   // "Show Allies" off: only enemies (and your own dot, as a reference point)
   const isAlly = playerData.m_team == localTeam;
   const color = getPlayerColor(playerData, localTeam, settings);
+  const { m_health: health, m_is_dead: isDead } = playerData; // eslint-disable-line react/prop-types
   if (isAlly && !playerData.m_is_local && !(settings.showAllies ?? true)) return null;
 
   return (
@@ -116,14 +119,19 @@ const Player = ({ playerData, mapData, radarImage, localTeam, averageLatency, se
       >
         {/* Player dot */}
         <div
-          className={`w-full h-full rounded-[50%_50%_50%_0%] rotate-[315deg]`}
+          className={`player-health-dot w-full h-full rounded-[50%_50%_50%_0%] rotate-[315deg]`}
           style={{
             backgroundColor: color,
             opacity: `${(playerData.m_is_dead && `0.8`) || (invalidPosition && `0`) || `1`}`,
             border: `2px solid ${color}`,
             filter: `drop-shadow(0 0 4px ${color})`,
           }}
-        />
+        >
+          {!isDead && (
+            <PlayerHealthFill health={health} color={color} playerRotation={playerRotation}
+              mapRotation={mapRotation} averageLatency={averageLatency} />
+          )}
+        </div>
 
         {/* View cone (kept exactly as it was) */}
         {settings.showViewCones && !playerData.m_is_dead && (

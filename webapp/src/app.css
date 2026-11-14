@@ -231,3 +231,13 @@ body {
   z-index: 3;
   pointer-events: none;
 }
+
+.player-health-dot {
+  overflow: hidden;
+}
+
+.player-health-level {
+  position: absolute;
+  inset: -50%;
+  pointer-events: none;
+}
