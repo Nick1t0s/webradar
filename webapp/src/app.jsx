@@ -15,14 +15,11 @@ import ViewerSelector from "./components/ViewerSelector";
 import ViewRayControl from "./components/ViewRayControl";
 import { useViewerPreferences } from "./hooks/useViewerPreferences";
 import { getViewerPerspective } from "./utilities/viewerPerspective";
+import { getWebSocketUrl } from "./utilities/websocketUrl";
 import { getLocalTeam } from "./utilities/utilities";
 
 /* change this to '1' if you want to use offline (your own pc only) */
 const USE_LOCALHOST = 0;
-
-/* you can get your public ip from https://ipinfo.io/ip */
-const PUBLIC_IP = "192.168.31.17".trim();
-const PORT = 22006;
 
 /*
  * For ngrok: set VITE_WS_URL in a .env file or when starting vite, e.g.:
@@ -30,8 +27,6 @@ const PORT = 22006;
  * This tells the frontend where the WebSocket ngrok tunnel is.
  */
 const NGROK_WS_URL = import.meta.env.VITE_WS_URL || null;
-
-const EFFECTIVE_IP = USE_LOCALHOST ? "localhost" : window.location.hostname;
 
 // Detect mode from URL param
 const _urlMode = new URLSearchParams(window.location.search).get("mode");
@@ -361,12 +356,9 @@ const App = () => {
   const [status, setStatus] = useState({ state: "connecting", detail: "Connecting to the radar helper" });
 
   useEffect(() => {
-    const wsUrl = NGROK_WS_URL
-      || (USE_LOCALHOST
-          ? `ws://localhost:${PORT}/cs2_webradar`
-          : window.location.protocol === 'https:'
-            ? `wss://${window.location.host}/cs2_webradar`
-            : `ws://${EFFECTIVE_IP}:${PORT}/cs2_webradar`);
+    const wsUrl = getWebSocketUrl(window.location, {
+      override: NGROK_WS_URL, useLocalhost: !!USE_LOCALHOST,
+    });
 
     let ws = null;
     let retryTimer = null;

@@ -33,6 +33,12 @@ weapon labels and the C4 icon stay upright for both manual and automatic rotatio
 
 ## Multiple viewers (no account needed)
 
+HTTP and WebSocket data use the same address and port: opening
+`http://PUBLIC_IP:5173` connects to `ws://PUBLIC_IP:5173/cs2_webradar` through the
+existing server proxy. Only the web port needs forwarding for browser viewers;
+do not point remote browsers at `localhost`. HTTPS uses `wss://` on the page's
+host and port. An explicit `VITE_WS_URL` still overrides this default.
+
 Open the same radar URL on each device, then choose yourself in **Settings → Your
 Player**. Your selection determines your marker, teammates/enemies, view rotation,
 following, height markers and map floor. A new player profile starts with Rotate

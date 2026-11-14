@@ -27,9 +27,10 @@ The helper serves the WebSocket itself and, when `webapp/dist` exists, the built
 Entry: `webapp/src/app.jsx`
 
 **Connection logic** (in `App` component):
-- `USE_LOCALHOST` flag switches between localhost and `PUBLIC_IP`/`window.location.hostname`
+- `getWebSocketUrl` uses the page's host and port for both HTTP (`ws://`) and HTTPS (`wss://`); `/cs2_webradar` is proxied by Vite or the helper's HTTP server
+- `USE_LOCALHOST` explicitly forces direct loopback `ws://localhost:22006` for legacy local-only setups
 - `VITE_WS_URL` env var overrides for ngrok tunnels
-- WebSocket connects to `ws://HOST:22006/cs2_webradar`
+- Browser viewers need only the exposed web port (normally 5173), not a separate forwarded 22006
 
 **JSON payload fields** received from the helper:
 - `m_players[]` — array of player objects (m_position.x/y, m_team, m_health, m_eye_angle, m_weapons, etc.)
