@@ -10,10 +10,13 @@ it: opponents above, your team
 below, based on **Your Player**. Each card shows nickname, HP and health bar,
 money, primary/secondary weapons and the active weapon (highlighted). Your own
 card is marked **You**, and dead players are dimmed. Updates come from the existing
-game frame with no backend changes. Narrow screens scroll the roster horizontally;
-the map fits the remaining area without cutting off its edges at Zoom 1 with
-Follow Me off. These rosters apply to the normal radar page; the small minimap
-keeps its map-focused layout.
+game frame with no backend changes. Cards wrap into multiple columns and rows;
+large rosters scroll vertically inside a bounded panel instead of stretching the
+page or producing a long horizontal strip. Each panel uses at most a quarter of
+the window height (capped at 22rem), preserving space for the map. At Zoom 1 with
+Follow Me off, the map fits the remaining area without cutting off its edges.
+These rosters apply to the normal radar page; the small minimap keeps its
+map-focused layout.
 
 Open **Settings → Map Rotation** to choose an angle, rotate 90° in either
 direction, or reset to 0°. The angle is saved in the browser and is also
