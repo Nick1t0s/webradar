@@ -2,6 +2,7 @@ import ReactDOM from "react-dom/client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import "./app.css";
 import PlayerCard from "./components/playercard";
+import PortraitTeamPanel from "./components/PortraitTeamPanel";
 import Radar from "./components/radar";
 import MapRotationControl from "./components/MapRotationControl";
 import PlayerColorSettings from "./components/PlayerColorSettings";
@@ -457,6 +458,8 @@ const App = () => {
   const perspective = useMemo(() => getViewerPerspective(playerArray, viewerId, localTeam), [playerArray, viewerId, localTeam]);
   const viewer = { id: viewerId, players: playerArray, onChange: selectViewer };
   const effectiveLocalTeam = perspective.localTeam;
+  const portraitHomeTeam = effectiveLocalTeam === 2 ? 2 : 3;
+  const hasRoster = playerArray.length > 0;
 
   // ── ESP overlay mode ─────────────────────────────────────────────────────
   if (IS_ESP) {
@@ -542,6 +545,7 @@ const App = () => {
   return (
     <div className="radar-app flex flex-col"
       style={{
+        "--portrait-footer-space": serverAddr ? `${80 + (tailscaleAddr ? 20 : 0) + (funnelAddr ? 20 : 0)}px` : "3rem",
         background: `radial-gradient(50% 50% at 50% 50%, rgba(20, 40, 55, 0.95) 0%, rgba(7, 20, 30, 0.95) 100%)`,
         backdropFilter: `blur(7.5px)`,
       }}
@@ -583,7 +587,9 @@ const App = () => {
           <p className="viewer-missing" role="status">Selected player is not in this match. Choose Your Player in Settings.</p>
         )}
 
-        <div className="radar-layout">
+        <div className={`radar-layout${hasRoster ? " has-rosters" : ""}${perspective.missing ? " missing-viewer" : ""}`}>
+          {hasRoster && <PortraitTeamPanel team={portraitHomeTeam === 2 ? 3 : 2}
+            players={perspective.players} localTeam={effectiveLocalTeam} settings={settings} />}
           <ul id="terrorist" className="radar-team flex-col justify-center gap-2 m-0 p-0 overflow-hidden max-h-full">
             {playerArray
               .filter((player) => player.m_team == 2)
@@ -631,12 +637,14 @@ const App = () => {
                 />
               ))}
           </ul>
+          {hasRoster && <PortraitTeamPanel team={portraitHomeTeam}
+            players={perspective.players} localTeam={effectiveLocalTeam} settings={settings} />}
         </div>
       </div>
 
       {/* Network address pill — bottom-left, click row to copy */}
       {!IS_OVERLAY && serverAddr && (
-        <div style={{
+        <div className="radar-network-address" style={{
           position: "fixed", bottom: 10, left: 12,
           display: "flex", flexDirection: "column", gap: 4,
           background: "rgba(0,0,0,0.55)", border: "1px solid rgba(255,255,255,0.1)",

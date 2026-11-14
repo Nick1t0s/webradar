@@ -55,7 +55,8 @@ Entry: `webapp/src/app.jsx`
 - `Bomb` — C4 icon on radar
 - `GrenadeLayer` — all active grenades
 - `CalloutLayer` — area name labels from `callouts.json`
-- `PlayerCard` — sidebar card (health, weapons, armor) shown on lg+ screens
+- `PlayerCard` — sidebar card (health, weapons, armor) shown in wide landscape windows at least 1024px wide
+- `PortraitTeamPanel` — compact team rosters above/below the normal radar in portrait and near-square windows; uses viewer-relative players and existing HP, money and weapons; minimap stays map-only
 - `Latency` — ping display + settings panel trigger
 
 Settings are persisted to `localStorage` under key `radarSettings` and merged over `DEFAULT_SETTINGS` in `app.jsx`. Notable ones: PLAYERS group (`showAllies`, `showAllyNames`, `showEnemyNames`, `showEnemyHeightMarker`, `showAllyHeightMarker`), utility display (`showUtilCircle`/`Name`/`Emoji`), `zoom` (1–4) and `followMe` (centre the local player). Height marker: a ▲/▼ on any player at least `heightMarkerThreshold` units (default 48; a boosted player is ~54–72) above/below the local player, or on the other level of a stacked map (`getHeightRelation`); size and colour via `heightMarkerScale`/`heightMarkerColor`. Ally/enemy colour is measured against `getLocalTeam()` (the local player's own team) so a team switch can't invert it. `set_auto_update` is sent to the helper only when `autoUpdate` changes. Settings UI exists twice: `SettingsButton.jsx` (browser) and the popup in `app.jsx` (minimap) — keep them in step.

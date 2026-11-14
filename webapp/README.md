@@ -4,8 +4,16 @@
 
 The radar fits both the width and height of the available window, including
 portrait monitors and resized minimap overlays. Team sidebars are shown on
-landscape screens at least 1024px wide; portrait screens use the full width
-for the map.
+wide landscape screens at least 1024px wide. Portrait and larger near-square
+windows use the full width for the map with compact team rosters above and below
+it: opponents above, your team
+below, based on **Your Player**. Each card shows nickname, HP and health bar,
+money, primary/secondary weapons and the active weapon (highlighted). Your own
+card is marked **You**, and dead players are dimmed. Updates come from the existing
+game frame with no backend changes. Narrow screens scroll the roster horizontally;
+the map fits the remaining area without cutting off its edges at Zoom 1 with
+Follow Me off. These rosters apply to the normal radar page; the small minimap
+keeps its map-focused layout.
 
 Open **Settings → Map Rotation** to choose an angle, rotate 90° in either
 direction, or reset to 0°. The angle is saved in the browser and is also

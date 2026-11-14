@@ -68,8 +68,182 @@ body {
   min-width: 0;
 }
 
-/* Portrait screens give the map the full width instead of reserving sidebars. */
-@media (min-width: 1024px) and (orientation: landscape) {
+.portrait-team-panel {
+  display: none;
+}
+
+@media (orientation: portrait), (min-width: 768px) and (max-aspect-ratio: 4/3) {
+  .radar-layout.has-rosters {
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    padding-bottom: var(--portrait-footer-space, 3rem);
+  }
+
+  .radar-layout.has-rosters.missing-viewer {
+    padding-top: 6rem;
+  }
+
+  .portrait-team-panel {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    max-height: min(12rem, 22dvh);
+    padding: 0.5rem;
+    border: 1px solid #6492b433;
+    border-radius: 0.6rem;
+    background: #07121ccc;
+  }
+}
+
+.portrait-team-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.4rem;
+  flex-shrink: 0;
+}
+
+.portrait-team-heading h2 {
+  color: #b1d0e7;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.portrait-team-heading > span {
+  color: #8ab;
+  font-size: 0.7rem;
+  white-space: nowrap;
+}
+
+.portrait-player-list {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(8rem, 1fr);
+  gap: 0.5rem;
+  min-height: 0;
+  min-width: 0;
+  overflow: auto;
+  scrollbar-width: thin;
+  padding-bottom: 0.2rem;
+}
+
+.portrait-player-card {
+  min-width: 0;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid #6492b433;
+  border-left: 3px solid var(--player-color);
+  border-radius: 0.35rem;
+  background: #14283799;
+  display: grid;
+  align-content: start;
+  gap: 0.25rem;
+}
+
+.portrait-player-card.is-dead {
+  opacity: 0.5;
+}
+
+.portrait-player-name {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.8rem;
+}
+
+.portrait-player-name > span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.portrait-player-badge {
+  flex-shrink: 0;
+  font-size: 0.6rem;
+  color: var(--player-color);
+}
+
+.portrait-player-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.5rem;
+  justify-content: space-between;
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.portrait-player-money {
+  color: #4ade80;
+}
+
+.portrait-hp-track {
+  height: 3px;
+  border-radius: 2px;
+  overflow: hidden;
+  background: #ffffff33;
+}
+
+.portrait-hp-track > div {
+  height: 100%;
+  background: var(--player-color);
+}
+
+.portrait-weapon-list {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: start;
+  gap: 0.2rem 0.45rem;
+  font-size: 0.6rem;
+  color: #6492b4;
+}
+
+.portrait-weapon-list > li {
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.portrait-weapon-list > li > span:last-child {
+  overflow-wrap: anywhere;
+}
+
+.portrait-weapon-list .is-active {
+  color: #fff;
+  font-weight: 700;
+}
+
+.portrait-weapon-icon {
+  width: 2rem;
+  height: 1rem;
+  flex-shrink: 0;
+  background: currentColor;
+}
+
+.portrait-team-empty {
+  font-size: 0.75rem;
+  color: #8ab;
+}
+
+.radar-network-address {
+  max-width: calc(100vw - 24px);
+}
+
+.radar-network-address > div > span:first-child {
+  flex-shrink: 0;
+}
+
+.radar-network-address > div > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Wide landscape windows keep the existing sidebars. */
+@media (min-width: 1024px) and (aspect-ratio > 4/3) {
   .radar-layout {
     grid-template-columns: minmax(0, 1fr) minmax(0, 3fr) minmax(0, 1fr);
   }
