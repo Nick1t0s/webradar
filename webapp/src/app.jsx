@@ -12,6 +12,7 @@ import EspOverlay from "./components/EspOverlay";
 import ColorField from "./components/ColorField";
 import StatusPill from "./components/StatusPill";
 import ViewerSelector from "./components/ViewerSelector";
+import ViewRayControl from "./components/ViewRayControl";
 import { useViewerPreferences } from "./hooks/useViewerPreferences";
 import { getViewerPerspective } from "./utilities/viewerPerspective";
 import { getLocalTeam } from "./utilities/utilities";
@@ -58,6 +59,7 @@ const DEFAULT_SETTINGS = {
   heightMarkerThreshold: 48, // units above/below you before the marker shows (boost = 54-72)
   heightMarkerColor: "#ffffff",
   showViewCones: false,
+  showSelfViewRay: false,
   showSmoke: true,
   showMolly: true,
   showFlash: true,
@@ -147,6 +149,7 @@ const OverlaySettingsPopup = ({ settings, setSettings, onClose,
       <ViewerSelector viewer={viewer} />
       <MapRotationControl settings={settings} onChange={value => setVal("mapRotation", value)}
         onFollowViewChange={value => setVal("followView", value)} />
+      <ViewRayControl settings={settings} onChange={value => setVal("showSelfViewRay", value)} />
       <PlayerColorSettings settings={settings} onChange={setVal} />
 
       {/* Sliders — uncontrolled (defaultValue) + onInput for live updates */}

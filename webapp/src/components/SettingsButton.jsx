@@ -1,6 +1,7 @@
 import MapRotationControl from "./MapRotationControl";
 import PlayerColorSettings from "./PlayerColorSettings";
 import ViewerSelector from "./ViewerSelector";
+import ViewRayControl from "./ViewRayControl";
 import ColorField from "./ColorField";
 import { useState } from "react";
 
@@ -53,6 +54,8 @@ const SettingsButton = ({ settings, onSettingsChange,
             <MapRotationControl settings={settings}
               onChange={value => onSettingsChange({ ...settings, mapRotation: value })}
               onFollowViewChange={value => onSettingsChange({ ...settings, followView: value })} />
+            <ViewRayControl settings={settings}
+              onChange={value => onSettingsChange({ ...settings, showSelfViewRay: value })} />
             <PlayerColorSettings settings={settings}
               onChange={(key, value) => onSettingsChange({ ...settings, [key]: value })} />
 

@@ -194,3 +194,40 @@ body {
   font-size: 0.75rem;
   pointer-events: none;
 }
+
+.view-ray-control {
+  color: #b1d0e7;
+  font-size: 0.8rem;
+  margin-bottom: 0.75rem;
+}
+
+.view-ray-control p {
+  color: #8ab;
+  font-size: 0.65rem;
+}
+
+.self-view-ray {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 0;
+}
+
+.view-ray-vector {
+  position: absolute;
+  left: 0;
+  top: 0;
+  overflow: visible;
+  transform-origin: 0 0;
+}
+
+.aim-target-ring {
+  position: absolute;
+  inset: -4px;
+  border: 2px solid #ffdd00;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px #07141e, 0 0 7px #ffdd0080;
+  z-index: 3;
+  pointer-events: none;
+}

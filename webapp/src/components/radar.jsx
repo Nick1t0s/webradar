@@ -6,6 +6,8 @@ import Bomb from "./bomb";
 import GrenadeLayer from "./GrenadeLayer";
 import CalloutLayer from "./CalloutLayer";
 import DroppedItemLayer from "./DroppedItemLayer";
+import ViewRayLayer from "./ViewRayLayer";
+import { getViewRay } from "../utilities/viewRay";
 
 const Radar = ({
   playerArray,
@@ -41,6 +43,10 @@ const Radar = ({
 
   // Show the level the local player is on; players above / below you get a ▲/▼ marker (see Player).
   const local = playerArray.find((p) => p.m_is_local);
+  const { showSelfViewRay, showAllies, selfColor } = settings ?? {};
+  const ray = showSelfViewRay ? getViewRay(local, playerArray, {
+    showAllies: showAllies ?? true, localTeam,
+  }) : null;
   const lower = isLowerLevel(mapData, local?.m_position?.z);
   const radarSrc = lower ? radarImage.replace(/radar\.png$/, "radar_lower.png") : radarImage;
 
@@ -62,6 +68,8 @@ const Radar = ({
             <div className="radar-clip" style={{ overflow: zoom > 1 || position ? "hidden" : "visible" }}>
               <div className="radar-content" style={{ transform: `translate(${tx}px, ${ty}px) scale(${zoom})` }}>
                 <img className="w-full h-full" src={radarSrc} alt={`${mapData?.name ?? "Map"} radar`} />
+                <ViewRayLayer local={local} ray={ray} mapData={mapData} size={size}
+                  color={selfColor ?? "#4ade80"} averageLatency={averageLatency} />
 
                 <CalloutLayer
                   mapName={mapData?.name}
@@ -78,6 +86,7 @@ const Radar = ({
                     localTeam={localTeam}
                     averageLatency={averageLatency}
                     settings={settings}
+                    aimTarget={ray?.target === player}
                     heightMarker={getHeightRelation(mapData, player, local, settings?.heightMarkerThreshold ?? 48)}
                   />
                 ))}

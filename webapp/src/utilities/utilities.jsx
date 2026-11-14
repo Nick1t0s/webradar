@@ -26,11 +26,11 @@ export const getHeightRelation = (mapData, player, ref, threshold = 48) => {
 };
 
 export const getRadarPosition = (mapData, entityCoords) => {
-  if (!entityCoords.x || !entityCoords.y) {
+  if (!Number.isFinite(entityCoords?.x) || !Number.isFinite(entityCoords?.y)) {
     return { x: 0, y: 0 };
   }
 
-  if (!mapData.x || !mapData.y) {
+  if (!Number.isFinite(mapData?.x) || !Number.isFinite(mapData?.y) || !Number.isFinite(mapData?.scale) || mapData.scale <= 0) {
     return { x: 0, y: 0 };
   }
 

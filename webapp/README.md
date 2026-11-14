@@ -55,6 +55,20 @@ Explicit **Helper Auto Update (shared)** and **Refresh offsets** actions still
 control the shared helper, subject to its existing access restrictions. The ESP
 overlay continues to use the helper's own camera matrix and local player.
 
+## Own view ray and aimed-player outline
+
+Enable **Settings → My View Ray** to draw a thin ray from your selected player in
+their Self Color. The first shown, living player intersecting the horizontal ray
+gets a yellow outline; shown teammates are included. The ray stops at that
+player, or continues to the map edge when nobody is aimed at. Turning it off
+hides both ray and outline. The option is saved in your personal player profile
+and is also available in minimap settings.
+
+This is an approximate 2D direction indicator with a 24-world-unit target radius.
+It deliberately ignores height, floor and walls and is not a game hit/visibility
+test. Hidden teammates and dead players are not highlighted. No changes to the
+memory reader or its payload are needed.
+
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
 Currently, two official plugins are available:

@@ -14,7 +14,9 @@ const calculatePlayerRotation = (playerData) => {
   return playerRotations[idx];
 };
 
-const Player = ({ playerData, mapData, radarImage, localTeam, averageLatency, settings, heightMarker }) => {
+const Player = ({ playerData, mapData, radarImage, localTeam, averageLatency, settings, heightMarker,
+  aimTarget = false, // eslint-disable-line react/prop-types
+}) => {
   const [lastKnownPosition, setLastKnownPosition] = useState(null);
   const radarPosition = getRadarPosition(mapData, playerData.m_position) || { x: 0, y: 0 };
   const invalidPosition = radarPosition.x <= 0 && radarPosition.y <= 0;
@@ -60,14 +62,16 @@ const Player = ({ playerData, mapData, radarImage, localTeam, averageLatency, se
   return (
     <div
       className={`absolute left-0 top-0`}
+      data-aim-target={aimTarget || undefined}
       style={{
         width: `${scaledSize}px`,
         height: `${scaledSize}px`,
         transform: `translate(${radarImageTranslation.x}px, ${radarImageTranslation.y}px)`,
         transition: `transform ${averageLatency}ms linear`,
-        zIndex: `${(playerData.m_is_dead && `0`) || `1`}`,
+        zIndex: playerData.m_is_dead ? 0 : aimTarget ? 5 : 1,
       }}
     >
+      {aimTarget && <div className="aim-target-ring" />}
       <div className="radar-upright absolute inset-0" style={{ pointerEvents: "none", zIndex: 2 }}>
         {/* Name above the dot — outside masked/rotating container. Enemies and
             teammates (you included) have separate toggles. */}
