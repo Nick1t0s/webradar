@@ -18,7 +18,10 @@ from websockets.exceptions import ConnectionClosed
 from websockets.sync.server import ServerConnection, serve
 
 from perspective.hyprland import query
-from perspective.scene import object_fields
+from perspective.config import GameVideo
+from perspective.geometry import Rect
+from perspective.overlay_scene import overlay_boxes
+from perspective.scene import Frame, object_fields
 from tests.test_perspective import player_data, settings
 
 
@@ -48,15 +51,23 @@ class NativeOverlayTests(unittest.TestCase):
     def test_fullscreen_transparency_focus_clickthrough_and_hide(self) -> None:
         import cairo
         stop = Event()
+        players = [player_data(), dict(player_data(2, False), m_health=25,
+                                      m_position={"x": 200, "y": -70, "z": 0},
+                                      m_eye_position={"x": 200, "y": -70, "z": 64},
+                                      m_eye_angle=90, m_eye_pitch=-20),
+                   dict(player_data(3, False), m_health=50, m_team=2,
+                        m_position={"x": 200, "y": 70, "z": 0},
+                        m_eye_position={"x": 200, "y": 70, "z": 64},
+                        m_eye_angle=90, m_eye_pitch=-20)]
+        payload = json.dumps({"m_players": players, "m_view_matrix": [
+            0, -1, 0, 0, 0, 0, 4 / 3, -64 * 4 / 3,
+            1, 0, 0, 0, 1, 0, 0, 0,
+        ]})
         def send(connection: ServerConnection) -> None:
-            players = [player_data(), dict(player_data(2, False), m_health=25, m_position={"x": 200, "y": -70, "z": 0}),
-                       dict(player_data(3, False), m_health=50, m_team=2, m_position={"x": 200, "y": 70, "z": 0})]
+            """Передаёт каркасы и наклонённые лучи с действующей матрицей игры."""
             try:
                 while not stop.wait(0.03):
-                    connection.send(json.dumps({"m_players": players, "m_view_matrix": [
-                        0, -1, 0, 0, 0, 0, 4 / 3, -64 * 4 / 3,
-                        1, 0, 0, 0, 1, 0, 0, 0,
-                    ]}))
+                    connection.send(payload)
             except ConnectionClosed:
                 pass
         original = object_fields(query("activewindow")).get("address")
@@ -112,10 +123,35 @@ class NativeOverlayTests(unittest.TestCase):
                     center = surface.get_height() // 2 * stride + surface.get_width() // 2 * 4
                     self.assertEqual(data[center:center + 3], data[20 * stride + 20 * 4:20 * stride + 20 * 4 + 3],
                                      "The center crosshair is still drawn")
-                    # Actual pointer and keyboard events go only to our own test surface.
-                    tool = os.environ.get("WEBRADAR_WLRCTL", "wlrctl")
                     game_at = cast(list[object], target["at"])
                     game_size = cast(list[object], target["size"])
+                    game_rect = Rect(float(str(game_at[0])) - float(str(monitor["x"])),
+                                     float(str(game_at[1])) - float(str(monitor["y"])),
+                                     float(str(game_size[0])), float(str(game_size[1])))
+                    outlines = overlay_boxes(Frame.parse(payload), configured, GameVideo.read(None), game_rect)
+                    ray = outlines[0].view_ray
+                    assert ray is not None
+                    scale = float(str(monitor["scale"]))
+                    ray_x, ray_y = (round((ray[0][axis] + ray[1][axis]) / 2 * scale) for axis in (0, 1))
+                    def ray_visible() -> bool:
+                        """Проверяет цвет середины луча вдали от каркаса на настоящем снимке экрана."""
+                        subprocess.run(["grim", "-o", str(monitor["name"]), str(screenshot)], check=True)
+                        current = cairo.ImageSurface.create_from_png(str(screenshot))
+                        pixels = bytes(current.get_data())
+                        for y in range(ray_y - 2, ray_y + 3):
+                            for x in range(ray_x - 2, ray_x + 3):
+                                offset = y * current.get_stride() + x * 4
+                                if pixels[offset + 2] > 180 and pixels[offset + 1] < 100 and pixels[offset] < 150:
+                                    return True
+                        return False
+                    wait_until(ray_visible)
+                    replace(configured, show_view_rays=False).save(config)
+                    wait_until(lambda: not ray_visible())
+                    self.assertTrue(game_active(), "Reloading ray settings stole focus")
+                    configured.save(config)
+                    wait_until(ray_visible)
+                    # Actual pointer and keyboard events go only to our own test surface.
+                    tool = os.environ.get("WEBRADAR_WLRCTL", "wlrctl")
                     x, y = int(str(game_at[0])) + int(str(game_size[0])) // 2, int(str(game_at[1])) + int(str(game_size[1])) // 2
                     subprocess.run(["hyprctl", "dispatch", "movecursor", str(x), str(y)], check=True, capture_output=True)
                     self.assertTrue(game_active())

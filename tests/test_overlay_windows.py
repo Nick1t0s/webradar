@@ -96,7 +96,9 @@ class WindowsNativeOverlayTests(unittest.TestCase):
         desktop = WindowsDesktop()  # DPI устанавливается до первого окна Tk.
         stop = Event()
         players = [player_data(), dict(player_data(2, False), m_health=25,
-                                      m_position={"x": 200, "y": -70, "z": 0})]
+                                      m_position={"x": 200, "y": -70, "z": 0},
+                                      m_eye_position={"x": 200, "y": -70, "z": 64},
+                                      m_eye_angle=90, m_eye_pitch=-20)]
         def send(connection: ServerConnection) -> None:
             """Отправляет кадры до проверки устаревания данных."""
             try:
@@ -180,8 +182,25 @@ class WindowsNativeOverlayTests(unittest.TestCase):
                                     colors.add(int(gdi32.GetPixel(dc, x, y)))
                         self.assertIn(0x0000ff, colors, "Не видны цветные каркасы")
                         self.assertIn(0xffffff, colors, "Не видна белая часть отсутствующего HP")
+                        ray = outlines[0].view_ray
+                        assert ray is not None
+                        ray_items = overlay.canvas.find_withtag("view-ray")
+                        self.assertEqual(len(ray_items), 2)
+                        for actual, expected in zip(overlay.canvas.coords(ray_items[1]), (*ray[0], *ray[1])):
+                            self.assertAlmostEqual(actual, expected)
+                        ray_x = round(target.x + (ray[0][0] + ray[1][0]) / 2)
+                        ray_y = round(target.y + (ray[0][1] + ray[1][1]) / 2)
+                        ray_colors = {int(gdi32.GetPixel(dc, x, y))
+                                      for x in range(ray_x - 2, ray_x + 3)
+                                      for y in range(ray_y - 2, ray_y + 3)}
+                        self.assertIn(0x0000ff, ray_colors, "Не виден луч отдельно от каркаса")
                     finally:
                         user32.ReleaseDC(None, dc)
+                    replace(overlay.state.settings, show_view_rays=False).save(path)
+                    wait_until(lambda: overlay is not None and not overlay.canvas.find_withtag("view-ray"), pump)
+                    replace(overlay.state.settings, show_view_rays=True).save(path)
+                    wait_until(lambda: overlay is not None and bool(overlay.canvas.find_withtag("view-ray")), pump)
+                    self.assertEqual(int(user32.GetForegroundWindow()), game_window, "Переключение лучей украло фокус")
                     point = outlines[0].segments[0][0]
                     user32.SetCursorPos(round(target.x + point[0]), round(target.y + point[1]))
                     user32.mouse_event(0x0002, 0, 0, 0, 0)
