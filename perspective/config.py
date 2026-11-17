@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import re
 import sys
+from typing import cast
 from urllib.parse import urlsplit
 
 from .scene import FrameError, Player, number, object_fields
@@ -45,10 +46,13 @@ class Settings:
     overlay_stretch: bool = False
     teammate_color: str = "#4ade80"
     enemy_color: str = "#ef4444"
+    show_view_rays: bool = True
 
     def __post_init__(self) -> None:
-        """Проверяет источник данных при любом способе создания настроек."""
+        """Проверяет источник и показ лучей при любом способе создания настроек."""
         validate_ws_url(self.ws_url)
+        if not isinstance(self.show_view_rays, bool):
+            raise SettingsError("show_view_rays: нужно true или false")
 
     @classmethod
     def load(cls, path: Path) -> Settings:
@@ -62,12 +66,14 @@ class Settings:
 
     @classmethod
     def parse(cls, raw: object) -> Settings:
+        """Читает настройки и добавляет новые поля старым сохранённым профилям."""
         try:
             fields = object_fields(raw)
             # Existing perspective preferences predate the overlay display mode.
             fields.setdefault("overlay_stretch", False)
             fields.setdefault("teammate_color", "#4ade80")
             fields.setdefault("enemy_color", "#ef4444")
+            fields.setdefault("show_view_rays", True)
             if set(fields) != set(cls.__dataclass_fields__):
                 raise SettingsError("Нужны все поля из config.example.json; неизвестные поля запрещены")
             url, cfg, player = fields["ws_url"], fields["cfg_dir"], fields["player"]
@@ -101,7 +107,7 @@ class Settings:
                     raise SettingsError(f"{key}: нужен цвет #RRGGBB")
                 colors.append(color.lower())
             return cls(url, cfg, player, dimensions[0], dimensions[1], fov, scale, eye, width, height, stretch,
-                       colors[0], colors[1])
+                       colors[0], colors[1], cast(bool, fields["show_view_rays"]))
         except (FrameError, KeyError, ValueError) as exc:
             raise SettingsError(str(exc)) from exc
 

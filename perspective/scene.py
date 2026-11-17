@@ -209,6 +209,20 @@ def clip_edge(a: Vec3, b: Vec3, tan_x: float, tan_y: float) -> tuple[Vec3, Vec3]
     return a, b
 
 
+def project_view_ray(project: Callable[[Vec3, Vec3, float, float], Segment | None],
+                     player: Player, width: float, height: float,
+                     eye_height: float) -> Segment | None:
+    """Проецирует направление взгляда живого игрока с обрезкой выбранной камерой."""
+    if player.dead or player.pitch is None:
+        return None
+    start = player.eye or player.position.add(Vec3(0, 0, eye_height))
+    yaw, pitch = math.radians(player.yaw), math.radians(player.pitch)
+    horizontal = 1024 * math.cos(pitch)
+    end = start.add(Vec3(horizontal * math.cos(yaw), horizontal * math.sin(yaw),
+                         -1024 * math.sin(pitch)))
+    return project(start, end, width, height)
+
+
 def project_box(project: Callable[[Vec3, Vec3, float, float], Segment | None],
                 player: Player, width: float, height: float,
                 body_width: float, body_height: float) -> tuple[Segment, ...]:

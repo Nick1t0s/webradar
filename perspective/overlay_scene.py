@@ -4,7 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from .config import GameVideo, Settings, SettingsError
 from .geometry import Rect
-from .scene import Camera, Frame, MatrixCamera, Segment, Vec3, fit_viewport
+from .scene import Camera, Frame, MatrixCamera, Segment, Vec3, fit_viewport, project_view_ray
 
 
 @dataclass(frozen=True)
@@ -12,11 +12,12 @@ class PlayerOutline:
     color: str
     segments: tuple[Segment, ...]
     health: float
+    view_ray: Segment | None = None
 
 
 def overlay_boxes(frame: Frame, settings: Settings, video: GameVideo,
                   game: Rect) -> tuple[PlayerOutline, ...]:
-    """Строит каркасы игроков в отображаемой области игры."""
+    """Строит каркасы и лучи взгляда игроков в отображаемой области игры."""
     player = frame.selected(settings.player)
     if player is None or player.dead:
         return ()
@@ -48,7 +49,14 @@ def overlay_boxes(frame: Frame, settings: Settings, video: GameVideo,
         a, b = segment
         return ((game.x + x + a[0] * w / width, game.y + y + a[1] * h / height),
                 (game.x + x + b[0] * w / width, game.y + y + b[1] * h / height))
-    return tuple(PlayerOutline(settings.player_color(other, player),
-                               tuple(transform(segment) for segment in camera.box(
-                                   other, width, height, settings.body_width, settings.body_height)), other.health)
-                 for other in frame.players if not other.dead and other.identity != player.identity)
+    outlines: list[PlayerOutline] = []
+    for other in frame.players:
+        if other.dead or other.identity == player.identity:
+            continue
+        ray = (project_view_ray(camera.project_edge, other, width, height, settings.eye_height)
+               if settings.show_view_rays else None)
+        outlines.append(PlayerOutline(settings.player_color(other, player),
+                                      tuple(transform(segment) for segment in camera.box(
+                                          other, width, height, settings.body_width, settings.body_height)),
+                                      other.health, transform(ray) if ray is not None else None))
+    return tuple(outlines)
