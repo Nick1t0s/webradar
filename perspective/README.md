@@ -23,12 +23,14 @@
 Использован стандартный [интерфейс uinput ядра Linux](https://docs.kernel.org/input/uinput.html).
 
 Нужны Python-зависимости из `perspective/requirements.txt`, включая Pydantic 2.
-Устанавливайте их в отдельное окружение, например:
+Устанавливайте их в отдельное окружение перспективы. На Linux системные
+GTK/PyGObject/Cairo доступны через `--system-site-packages`; новые Python-пакеты
+устанавливаются только в это окружение:
 
 ```sh
-python3 -m venv /tmp/codex-venv-perspective
-/tmp/codex-venv-perspective/bin/pip install -r perspective/requirements.txt
-PYTHON=/tmp/codex-venv-perspective/bin/python ./perspective/run-linux.sh
+python3 -m venv --system-site-packages perspective/.venv
+perspective/.venv/bin/python -m pip install -r perspective/requirements.txt
+./perspective/run-linux.sh
 ```
 
 Обычное окно использует Tk из Python. Нативному оверлею дополнительно нужны
@@ -198,7 +200,8 @@ Data source (WebSocket)**. **Connect** сохраняет адрес отдел�
    ./perspective/run-linux.sh
    ```
 
-   Скрипт использует уже существующий `helper/linux/.venv`, если он есть.
+   Скрипт использует `perspective/.venv`. Если его нет, выбирает существующий
+   `helper/linux/.venv`, затем системный Python.
    `PYTHON=/путь/к/python ./perspective/run-linux.sh` выбирает другое окружение.
    Новые окружения и пакеты этот скрипт не устанавливает.
 

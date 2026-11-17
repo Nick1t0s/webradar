@@ -4,6 +4,8 @@ REPO_DIR="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 cd "$REPO_DIR"
 if [ -n "${PYTHON:-}" ]; then
     PYTHON_BIN="$PYTHON"
+elif [ -x "$REPO_DIR/perspective/.venv/bin/python" ]; then
+    PYTHON_BIN="$REPO_DIR/perspective/.venv/bin/python"
 elif [ -x "$REPO_DIR/helper/linux/.venv/bin/python" ]; then
     PYTHON_BIN="$REPO_DIR/helper/linux/.venv/bin/python"
 else
