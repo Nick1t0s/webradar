@@ -121,6 +121,11 @@ Needs `pyinstaller` and `pywebview`. Output: `helper\windows\dist\cs2-webradar.e
 2. Otherwise offsets are fetched from [cs2-dumper](https://github.com/a2x/cs2-dumper) and the game binary is scanned locally to patch values that are not updated yet (on Linux the dumper's offsets are Windows-only, so a Linux scan and field baseline are applied)
 3. The result is cached; the "Refresh offsets" button forces a re-fetch
 
+Both helpers revalidate a cached local-player controller. After 30 seconds
+without player data, they recreate the reader to resolve live game state again,
+including on the first launch. This recovery does not download offsets; manual
+"Refresh offsets" remains available when an explicit re-fetch is needed.
+
 ## Network and security
 
 The helper serves the site over HTTP on **5173** and game data over WebSocket on
