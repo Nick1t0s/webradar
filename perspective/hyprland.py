@@ -8,19 +8,12 @@ import subprocess
 from threading import Event, Thread
 from typing import cast
 
+from .geometry import Rect as Rect
 from .scene import FrameError, number, object_fields
 
 
 class HyprlandError(RuntimeError):
     """The compositor's IPC is unavailable or returned invalid geometry."""
-
-
-@dataclass(frozen=True)
-class Rect:
-    x: float
-    y: float
-    width: float
-    height: float
 
 
 @dataclass(frozen=True)

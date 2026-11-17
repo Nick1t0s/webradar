@@ -6,7 +6,6 @@ import os
 from pathlib import Path
 import signal
 import sys
-import time
 from typing import Protocol, cast
 
 # The local typelib is optional; distro-installed typelibs work without it.
@@ -22,11 +21,10 @@ gi.require_version("Gdk", "3.0")
 gi.require_version("GtkLayerShell", "0.1")
 from gi.repository import Gdk, GLib, Gtk
 
-from .config import GameVideo, Settings, SettingsError, discover_cfg_dirs
-from .connection import RadarConnection
+from .config import SettingsError
 from .hyprland import GameTarget, HyprlandTracker
-from .overlay_scene import overlay_boxes
-from .scene import Frame, player_health_strokes
+from .overlay_state import OverlayState
+from .scene import player_health_strokes
 
 
 class LayerValues(Protocol):
@@ -65,19 +63,12 @@ LayerShell = cast(LayerShellAPI, import_module("gi.repository.GtkLayerShell"))
 
 class Overlay:
     def __init__(self, settings_path: Path) -> None:
+        """Создаёт прозрачную Wayland-поверхность и общую подписку."""
         Gtk.init([])
         if not LayerShell.is_supported():
             raise SettingsError("Нужен Wayland compositor с layer-shell (Hyprland)")
-        self.settings_path = settings_path
-        self.settings = Settings.load(settings_path)
-        self.settings_stamp = settings_path.stat().st_mtime_ns
-        self.profiles = discover_cfg_dirs()
-        self.video = GameVideo.read(None)
-        self.video_identity = ""
-        self.connection = RadarConnection(self.settings.ws_url, self._notify_frame)
+        self.state = OverlayState(settings_path, self._notify_frame)
         self.desktop = HyprlandTracker()
-        self.frame = Frame((), "")
-        self.received_at = 0.0
         self.target: GameTarget | None = None
         self.last_message = ""
         self.output_name = ""
@@ -105,56 +96,44 @@ class Overlay:
             LayerShell.set_anchor(self.window, edge, True)
         self.window.connect("draw", self._draw)
         self.window.connect("size-allocate", self._input_region)
-        self.connection.start()
+        self.state.start()
         self.desktop.start()
         self.timer = GLib.timeout_add(16, self._tick)
         self.reload_timer = GLib.timeout_add(500, self._reload_settings)
 
     def _input_region(self, widget: Gtk.Widget, allocation: Gdk.Rectangle) -> None:
+        """Пропускает указатель мыши в расположенную под слоем игру."""
         self.window.input_shape_combine_region(cairo.Region(cairo.RectangleInt(0, 0, 0, 0)))
 
     def _message(self, text: str) -> None:
+        """Пишет изменившееся сообщение в журнал оверлея."""
         if text != self.last_message:
             print(f"Overlay: {text}", file=sys.stderr, flush=True)
             self.last_message = text
 
     def _notify_frame(self) -> None:
+        """Будит главный цикл GTK при получении нового кадра."""
         # Called by the receiver thread only when its one-slot mailbox becomes
         # nonempty. Wake GTK directly instead of waiting for a polling timer.
         GLib.idle_add(self._frame_ready, priority=GLib.PRIORITY_HIGH_IDLE)
 
     def _frame_ready(self) -> bool:
+        """Обновляет поверхность из главного потока GTK."""
         if not self.closed:
             self._tick()
         return False
 
     def _reload_settings(self) -> bool:
+        """Перечитывает общие настройки и запрашивает перерисовку."""
         try:
-            stamp = self.settings_path.stat().st_mtime_ns
-            if stamp != self.settings_stamp:
-                settings = Settings.load(self.settings_path)
-                if settings.ws_url != self.settings.ws_url:
-                    self.connection.stop()
-                    self.connection = RadarConnection(settings.ws_url, self._notify_frame)
-                    self.frame = Frame((), "")
-                    self.connection.start()
-                self.settings, self.settings_stamp = settings, stamp
-                self._load_video()
+            if self.state.reload():
                 self.window.queue_draw()
         except (OSError, SettingsError) as exc:
             self._message(str(exc))
         return not self.closed
 
-    def _load_video(self) -> None:
-        player = self.frame.selected(self.settings.player)
-        self.video_identity = player.identity if player else ""
-        try:
-            self.video = GameVideo.for_player(self.settings, player, self.profiles)
-        except OSError as exc:
-            self.video = GameVideo(None, None, None, "")
-            self._message(str(exc))
-
     def _monitor(self, target: GameTarget) -> Gdk.Monitor | None:
+        """Находит монитор GDK, соответствующий области игры."""
         display = self.window.get_display()
         for i in range(display.get_n_monitors()):
             monitor = display.get_monitor(i)
@@ -166,23 +145,18 @@ class Overlay:
         return None
 
     def _tick(self) -> bool:
+        """Обновляет данные, монитор и видимость слоя."""
         previous_target = self.target
-        update = self.connection.latest()
-        if update is not None:
-            self.frame = update.frame or Frame((), "")
-            self.received_at = update.received_at
-            player = self.frame.selected(self.settings.player)
-            if (player.identity if player else "") != self.video_identity:
-                self._load_video()
+        changed = self.state.poll()
         desktop = self.desktop.latest()
         if desktop is not None:
             self.target = desktop.target
             if desktop.error:
                 self._message(desktop.error)
-        fresh = time.monotonic() - self.received_at <= 2
-        needs_draw = update is not None or previous_target != self.target or fresh != self.fresh
+        fresh = self.state.fresh
+        needs_draw = changed or previous_target != self.target or fresh != self.fresh
         self.fresh = fresh
-        if self.target is None:
+        if self.target is None or not fresh:
             if self.window.get_visible():
                 self.window.hide()
         else:
@@ -203,15 +177,16 @@ class Overlay:
         return not self.closed
 
     def _draw(self, widget: Gtk.Widget, context: cairo.Context[cairo.Surface]) -> bool:
+        """Рисует общую сцену с прозрачным фоном и уровнем здоровья."""
         # Clear every frame to actual alpha=0, including unused letterbox areas.
         context.set_operator(cairo.OPERATOR_SOURCE)
         context.set_source_rgba(0, 0, 0, 0)
         context.paint()
         context.set_operator(cairo.OPERATOR_OVER)
-        if self.target is None or time.monotonic() - self.received_at > 2:
+        if self.target is None or not self.state.fresh:
             return True
         try:
-            boxes = overlay_boxes(self.frame, self.settings, self.video, self.target.game)
+            boxes = self.state.boxes(self.target.game)
         except SettingsError as exc:
             self._message(str(exc))
             return True
@@ -239,11 +214,12 @@ class Overlay:
         return True
 
     def close(self) -> bool:
+        """Останавливает подписку, отслеживание игры и окно GTK."""
         if not self.closed:
             self.closed = True
             GLib.source_remove(self.timer)
             GLib.source_remove(self.reload_timer)
-            self.connection.stop()
+            self.state.close()
             self.desktop.stop()
             self.window.destroy()
             Gtk.main_quit()
@@ -251,6 +227,7 @@ class Overlay:
 
 
 def run(settings_path: Path) -> None:
+    """Запускает оверлей Hyprland с корректным завершением по сигналу."""
     overlay = Overlay(settings_path)
     GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGTERM, overlay.close)
     GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGINT, overlay.close)
