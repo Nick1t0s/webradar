@@ -3,11 +3,17 @@ from __future__ import annotations
 
 import fcntl
 import ipaddress
+from dataclasses import asdict
+import json
 import os
 from pathlib import Path
 from threading import Event, Thread
 import time
 from urllib.parse import urlsplit
+from typing import Annotated
+
+from pydantic import ConfigDict, Field, TypeAdapter, ValidationError
+from pydantic.dataclasses import dataclass
 
 from .config import Settings, SettingsError
 from .connection import RadarConnection
@@ -15,6 +21,32 @@ from .hyprland import HyprlandError, query
 from .mouse_linux import LinuxMouse
 from .recoil import RecoilMotion
 from .scene import Frame, FrameError, object_fields
+
+
+@dataclass(frozen=True, config=ConfigDict(extra="forbid", allow_inf_nan=False))
+class SharedStatus:
+    """Передаёт актуальное состояние единственного исполнителя остальным окнам."""
+
+    message: Annotated[str, Field(strict=True, min_length=1, max_length=4096)]
+    updated_at: Annotated[float, Field(strict=True, ge=0)]
+
+
+def publish_status(path: Path, message: str, now: float) -> None:
+    """Атомарно публикует статус без раскрытия промежуточного JSON читателям."""
+    temporary = path.with_suffix(".tmp")
+    temporary.write_text(json.dumps(asdict(SharedStatus(message, now)), ensure_ascii=False), encoding="utf-8")
+    temporary.replace(path)
+
+
+def owner_status(path: Path, now: float) -> str:
+    """Показывает свежий статус владельца или сообщает об ожидании его состояния."""
+    try:
+        record = TypeAdapter(SharedStatus).validate_json(path.read_bytes())
+        if 0 <= now - record.updated_at <= 2:
+            return record.message
+    except (OSError, ValidationError):
+        pass
+    return "Отдача: ожидание состояния другого окна перспективы/оверлея"
 
 
 def local_source(url: str) -> bool:
@@ -138,6 +170,9 @@ class RecoilService:
         settings: Settings | None = None
         stamp = -1
         reload_at = 0.0
+        publish_at = 0.0
+        directory = Path(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}"))
+        status_path = directory / "cs2-perspective-recoil-status.json"
         try:
             while not self.stopped.is_set():
                 try:
@@ -165,19 +200,22 @@ class RecoilService:
                         continue
                     if lock_fd < 0:
                         # Independent of checkout/settings path: preview + overlay never double compensation.
-                        directory = Path(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}"))
                         lock_fd = os.open(directory / "cs2-perspective-recoil.lock", os.O_CREAT | os.O_RDWR | os.O_CLOEXEC, 0o600)
                         try:
                             fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
                         except BlockingIOError:
                             os.close(lock_fd)
                             lock_fd = -1
-                            self.status = "Отдача: управляется другим окном перспективы/оверлеем"
+                            self.status = owner_status(status_path, time.monotonic())
                             self.stopped.wait(0.25)
                             continue
                     if session is None:
                         session = RecoilSession(settings)
                     self.status = session.tick()
+                    now = time.monotonic()
+                    if now >= publish_at:
+                        publish_status(status_path, self.status, now)
+                        publish_at = now + 0.1
                     self.stopped.wait(0.008)
                 except (OSError, SettingsError) as exc:
                     self.status = f"Отдача остановлена: {exc}"
