@@ -19,11 +19,81 @@ from websockets.sync.server import ServerConnection, serve
 
 from perspective.config import Settings
 from perspective.window import PerspectiveWindow
+from tests.test_matrix_projection import render_matrix
 from tests.test_perspective import player_data
 
 
 @unittest.skipUnless(os.environ.get("DISPLAY"), "Tk integration needs DISPLAY / XWayland")
 class WindowTests(unittest.TestCase):
+    def test_live_matrix_replaces_stale_cfg_fov_and_does_not_leak_to_remote_player(self) -> None:
+        """Использует матрицу локальной камеры, сохраняя удалённую перспективу и ручной FOV."""
+        stop = Event()
+        local = dict(player_data(), m_camera_fov=None)
+        remote = dict(player_data(2, False), m_position={"x": 300, "y": 0, "z": 0},
+                      m_eye_position={"x": 300, "y": 0, "z": 64}, m_eye_angle=180, m_camera_fov=50)
+        def handle(connection: ServerConnection) -> None:
+            """Передаёт действующую матрицу вместе с двумя игроками."""
+            try:
+                while not stop.wait(0.02):
+                    connection.send(json.dumps({"m_players": [local, remote], "m_view_matrix": render_matrix()}))
+            except (OSError, ConnectionClosed):
+                pass
+        with tempfile.TemporaryDirectory() as directory, serve(handle, "127.0.0.1", 0) as server:
+            folder = Path(directory)
+            account = 76561198000000001 - 76561197960265728
+            cfg = folder / "userdata" / str(account) / "730" / "local" / "cfg"
+            cfg.mkdir(parents=True)
+            (cfg / "cs2_video.txt").write_text('"setting.defaultres" "1280"\n"setting.defaultresheight" "800"\n')
+            (cfg / "cs2_user_convars_0_slot0.vcfg").write_text('"fov_desired" "75"\n')
+            path = folder / "settings.json"
+            configured = replace(Settings.load(path), width=1280, height=800,
+                                 ws_url=f"ws://127.0.0.1:{server.socket.getsockname()[1]}/cs2_webradar")
+            thread = Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            root = tk.Tk()
+            with patch("perspective.window.discover_cfg_dirs", return_value=(cfg,)):
+                window = PerspectiveWindow(root, configured, path)
+            def pump_until(predicate: Callable[[], bool]) -> None:
+                """Обрабатывает реальные события окна до проверяемого состояния."""
+                deadline = time.monotonic() + 4
+                while not predicate():
+                    root.update()
+                    if time.monotonic() >= deadline:
+                        self.fail(f"Не дождались состояния: {window.status.get()}")
+                    time.sleep(0.005)
+            try:
+                pump_until(lambda: "матрица игры" in window.status.get())
+                self.assertIn("FOV 90", window.status.get())
+                self.assertEqual(window.video.fov, 75)
+                self.assertGreater(len(window.canvas.find_withtag("scene")), 3)
+                label = next(label for label, identity in window.labels.items() if identity.endswith("000002"))
+                window.selected.set(label)
+                window.selector.event_generate("<<ComboboxSelected>>")
+                pump_until(lambda: "Player 2" in window.status.get())
+                self.assertIn("FOV 50", window.status.get())
+                self.assertNotIn("матрица игры", window.status.get())
+                window.selected.set("Главный игрок helper")
+                window.selector.event_generate("<<ComboboxSelected>>")
+                pump_until(lambda: "матрица игры" in window.status.get())
+                window.open_settings()
+                root.update()
+                dialog = next(widget for widget in root.winfo_children() if isinstance(widget, tk.Toplevel))
+                field = next(widget for widget in dialog.winfo_children()
+                             if isinstance(widget, ttk.Entry) and widget.grid_info()["row"] == 4)
+                field.delete(0, "end")
+                field.insert(0, "75")
+                button = next(widget for widget in dialog.winfo_children()
+                              if isinstance(widget, ttk.Button) and widget.cget("text") == "Применить")
+                button.invoke()
+                pump_until(lambda: "вручную" in window.status.get())
+                self.assertIn("FOV 75", window.status.get())
+                self.assertNotIn("матрица игры", window.status.get())
+            finally:
+                stop.set()
+                window.close()
+                server.shutdown()
+                thread.join(timeout=2)
+
     def test_helper_status_precedes_missing_cfg_and_match_selects_profile(self) -> None:
         """Показывает статус helper до разрешения и выбирает cfg по живому Steam ID."""
         stop, playing, unknown_player, silent, broken = (Event() for _ in range(5))

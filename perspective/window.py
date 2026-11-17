@@ -12,7 +12,7 @@ from tkinter import colorchooser, filedialog, messagebox, ttk
 
 from .config import GameVideo, Settings, SettingsError, discover_cfg_dirs
 from .connection import RadarConnection
-from .scene import Camera, Frame, Vec3, fit_viewport, player_health_strokes
+from .scene import Camera, Frame, MatrixCamera, Vec3, player_health_strokes
 
 
 class PerspectiveWindow:
@@ -184,19 +184,28 @@ class PerspectiveWindow:
         except SettingsError as exc:
             self._show_status(str(exc))
             return
-        aspect = game_width / game_height
-        left, top, view_width, view_height = fit_viewport(width, height, aspect, game_width * self.settings.scale)
+        matrix = self.frame.local_camera(player, self.settings.fov)
+        camera: Camera | MatrixCamera
+        fov: float | None
+        if matrix is not None:
+            camera = replace(matrix, maximum_width=game_width * self.settings.scale)
+            fov = matrix.fov
+            source = "матрица игры"
+        else:
+            if player.pitch is None:
+                self._show_status("Helper не передаёт вертикальный угол. Перезапустите обновлённый helper")
+                return
+            fov = self.settings.fov if self.settings.fov is not None else player.fov or self.video.fov
+            if fov is None:
+                self._show_status("FOV не найден: задайте его вручную в настройках")
+                return
+            eye = player.eye or player.position.add(Vec3(0, 0, self.settings.eye_height))
+            camera = Camera(eye, player.yaw, player.pitch, fov, game_width / game_height,
+                            game_width * self.settings.scale)
+            source = "вручную" if self.settings.fov is not None else "helper" if player.fov else "сохранённый cfg"
+        left, top, view_width, view_height = camera.viewport(width, height)
         canvas.create_rectangle(left, top, left + view_width, top + view_height, fill="white", outline="", tags="scene")
         # All content is clipped to the same viewport; bars remain black under tiling.
-        if player.pitch is None:
-            self.status.set("Helper не передаёт вертикальный угол. Перезапустите обновлённый helper")
-            return
-        fov = self.settings.fov if self.settings.fov is not None else player.fov or self.video.fov
-        if fov is None:
-            self.status.set("FOV не найден: задайте его вручную в настройках")
-            return
-        eye = player.eye or player.position.add(Vec3(0, 0, self.settings.eye_height))
-        camera = Camera(eye, player.yaw, player.pitch, fov, aspect, game_width * self.settings.scale)
         for other in self.frame.players:
             if other.identity == player.identity or other.dead:
                 continue
@@ -206,9 +215,8 @@ class PerspectiveWindow:
             for stroke in player_health_strokes(segments, other.health, self.settings.player_color(other, player)):
                 a, b = stroke.segment
                 canvas.create_line(*a, *b, fill=stroke.color, width=2, tags="scene")
-        source = "вручную" if self.settings.fov is not None else "helper" if player.fov else "сохранённый cfg"
         missing = []
-        if player.eye is None:
+        if matrix is None and player.eye is None:
             missing.append("высота глаз вручную")
         if any(p.bounds is None for p in self.frame.players if not p.dead and p.identity != player.identity):
             missing.append("размеры тел вручную")
@@ -243,7 +251,7 @@ class PerspectiveWindow:
                   ("cfg_dir", "Папка cfg CS2 (пусто = поиск)", self.settings.cfg_dir),
                   ("width", "Ширина CS2 (пусто = из cfg)", self.settings.width),
                   ("height", "Высота CS2 (пусто = из cfg)", self.settings.height),
-                  ("fov", "FOV при 4:3 (пусто = helper/cfg)", self.settings.fov),
+                  ("fov", "FOV при 4:3 (пусто = автоматически)", self.settings.fov),
                   ("scale", "Множитель размера окна", self.settings.scale),
                   ("eye_height", "Высота глаз без данных helper", self.settings.eye_height),
                   ("body_width", "Ширина тела без данных helper", self.settings.body_width),
@@ -272,7 +280,7 @@ class PerspectiveWindow:
         stretch = tk.BooleanVar(value=self.settings.overlay_stretch)
         ttk.Checkbutton(dialog, text="Оверлей: CS2 растягивает картинку на всё окно (без полос)", variable=stretch).grid(
             row=len(fields), column=0, columnspan=3, padx=10, pady=5, sticky="w")
-        ttk.Label(dialog, text=f"Адрес источника: ws://КОМПЬЮТЕР:22006/cs2_webradar (HTTP сайта — отдельно, 5173).\nНастройка действует и для оверлея поверх CS2.\nИсточник камеры: {self.video.source}\nFOV cfg может отличаться от действующего FOV. viewmodel_fov не используется.\nМасштаб действует на отдельное окно; оверлей совмещается с полной игровой областью.",
+        ttk.Label(dialog, text=f"Адрес источника: ws://КОМПЬЮТЕР:22006/cs2_webradar (HTTP сайта — отдельно, 5173).\nНастройка действует и для оверлея поверх CS2.\nИсточник cfg: {self.video.source}\nЛокальная камера автоматически использует матрицу игры; ручной FOV отключает её.\nFOV cfg может отличаться от действующего FOV. viewmodel_fov не используется.\nМасштаб действует на отдельное окно; оверлей совмещается с полной игровой областью.",
                   wraplength=680).grid(row=len(fields) + 1, column=0, columnspan=3, padx=10, pady=10, sticky="w")
         def apply() -> None:
             raw: dict[str, object] = {key: variable.get().strip() for key, variable in entries.items()}

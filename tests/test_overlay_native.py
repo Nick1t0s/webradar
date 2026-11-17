@@ -53,7 +53,10 @@ class NativeOverlayTests(unittest.TestCase):
                        dict(player_data(3, False), m_health=50, m_team=2, m_position={"x": 200, "y": 70, "z": 0})]
             try:
                 while not stop.wait(0.03):
-                    connection.send(json.dumps({"m_players": players}))
+                    connection.send(json.dumps({"m_players": players, "m_view_matrix": [
+                        0, -1, 0, 0, 0, 0, 4 / 3, -64 * 4 / 3,
+                        1, 0, 0, 0, 1, 0, 0, 0,
+                    ]}))
             except ConnectionClosed:
                 pass
         original = object_fields(query("activewindow")).get("address")

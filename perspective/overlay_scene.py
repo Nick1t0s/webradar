@@ -1,10 +1,10 @@
 """Projection into the actual game rectangle; independent of the GUI toolkit."""
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from .config import GameVideo, Settings, SettingsError
 from .geometry import Rect
-from .scene import Camera, Frame, Segment, Vec3, fit_viewport
+from .scene import Camera, Frame, MatrixCamera, Segment, Vec3, fit_viewport
 
 
 @dataclass(frozen=True)
@@ -18,17 +18,27 @@ def overlay_boxes(frame: Frame, settings: Settings, video: GameVideo,
                   game: Rect) -> tuple[PlayerOutline, ...]:
     """Строит каркасы игроков в отображаемой области игры."""
     player = frame.selected(settings.player)
-    if player is None or player.dead or player.pitch is None:
+    if player is None or player.dead:
         return ()
-    width, height = video.resolution(settings)
-    fov = settings.fov if settings.fov is not None else player.fov or video.fov
-    if fov is None:
-        raise SettingsError("FOV не найден: задайте его в окне настроек перспективы")
-    aspect = width / height
-    eye = player.eye or player.position.add(Vec3(0, 0, settings.eye_height))
+    source_width, source_height = video.resolution(settings)
+    matrix = frame.local_camera(player, settings.fov)
+    camera: Camera | MatrixCamera
+    width, height = float(source_width), float(source_height)
+    if matrix is not None:
+        camera = replace(matrix, maximum_width=width)
+        aspect = matrix.aspect
+        height = width / aspect
+    else:
+        if player.pitch is None:
+            return ()
+        fov = settings.fov if settings.fov is not None else player.fov or video.fov
+        if fov is None:
+            raise SettingsError("FOV не найден: задайте его в окне настроек перспективы")
+        aspect = width / height
+        eye = player.eye or player.position.add(Vec3(0, 0, settings.eye_height))
+        camera = Camera(eye, player.yaw, player.pitch, fov, aspect, width)
     # Project at the source resolution, then map into the game's displayed image.
     # The small-window scale is deliberately irrelevant to aligned overlay mode.
-    camera = Camera(eye, player.yaw, player.pitch, fov, aspect, width)
     if settings.overlay_stretch:
         x, y, w, h = 0.0, 0.0, game.width, game.height
     else:
