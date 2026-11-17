@@ -2551,9 +2551,6 @@ def _ws_headers(websocket):
 
 def _ws_can_control(websocket, headers) -> bool:
     peer = (getattr(websocket, "remote_address", None) or ("",))[0]
-    # The HTTP server's /cs2_webradar proxy connects from loopback; it passes
-    # the real client address along. Only trusted when the hop itself is local.
-    real = headers.get("X-Radar-Peer") if _is_loopback(peer) else None
     # A tunnel (Tailscale, ngrok, cloudflared) also connects from loopback, so
     # "local" additionally needs a loopback Host and no proxy headers.
     host = _hostname(headers.get("Host", ""))
@@ -2561,7 +2558,7 @@ def _ws_can_control(websocket, headers) -> bool:
     proxied = any(headers.get(h) for h in (
         "Forwarded", "X-Forwarded-For", "X-Forwarded-Host", "X-Real-IP",
         "CF-Connecting-IP", "Tailscale-User-Login", "Tailscale-User-Name"))
-    if _is_loopback(real or peer) and host_local and not proxied:
+    if _is_loopback(peer) and host_local and not proxied:
         return True
     return bool(load_config().get("allow_remote_control"))
 
@@ -2857,12 +2854,8 @@ class MapExtractor:
         return True
 
 
-def _start_http(static_dir: str, maps_cache: Path):
-    """
-    Serve the webapp with a dual-directory handler:
-      /data/<map>/* → maps_cache first, then static_dir fallback
-      everything else → static_dir
-    """
+def _start_http(static_dir: str, maps_cache: Path) -> http.server.HTTPServer:
+    """Раздаёт сайт и карты по HTTP; WebSocket работает на отдельном порту."""
     import posixpath, urllib.parse, mimetypes
 
     _static = static_dir
@@ -2900,13 +2893,8 @@ def _start_http(static_dir: str, maps_cache: Path):
             return index if index.exists() else None
 
         def do_GET(self):
-            # Proxy WebSocket upgrades to the WS server at WS_PORT
-            if (self.path.split("?")[0] == "/cs2_webradar" and
-                    self.headers.get("Upgrade", "").lower() == "websocket"):
-                if not _ws_origin_ok(self.headers):
-                    self.send_error(403)
-                    return
-                self._proxy_ws()
+            if self.headers.get("Upgrade", "").lower() == "websocket":
+                self.send_error(426, f"WebSocket data is served on port {WS_PORT}")
                 return
             path = self._resolve(self.path)
             if path is None or not path.exists():
@@ -2921,74 +2909,6 @@ def _start_http(static_dir: str, maps_cache: Path):
             self.end_headers()
             self.wfile.write(data)
 
-        def _proxy_ws(self):
-            import hashlib, base64
-            key = self.headers.get("Sec-WebSocket-Key", "")
-            accept = base64.b64encode(
-                hashlib.sha1((key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").encode()).digest()
-            ).decode()
-            # Complete the handshake with the browser
-            self.send_response(101, "Switching Protocols")
-            self.send_header("Upgrade", "websocket")
-            self.send_header("Connection", "Upgrade")
-            self.send_header("Sec-WebSocket-Accept", accept)
-            self.end_headers()
-            self.wfile.flush()
-            # Open a raw TCP connection to the actual WS server
-            try:
-                backend = socket.create_connection(("localhost", WS_PORT), timeout=5)
-            except Exception as e:
-                log.warning("ws proxy: backend connect failed: %s", e)
-                return
-            # Send a proper WebSocket upgrade to the backend
-            # Pass the original Host and any proxy headers on: the backend decides
-            # "is this client local?" from them, so they must not be rewritten.
-            fwd = "".join(
-                f"{h}: {self.headers[h].replace(chr(13), '').replace(chr(10), '')}\r\n"
-                for h in ("Forwarded", "X-Forwarded-For", "X-Forwarded-Host", "X-Real-IP",
-                          "CF-Connecting-IP", "Tailscale-User-Login", "Tailscale-User-Name")
-                if self.headers.get(h))
-            orig_host = (self.headers.get("Host") or f"localhost:{WS_PORT}").replace("\r", "").replace("\n", "")
-            backend.sendall((
-                f"GET /cs2_webradar HTTP/1.1\r\n"
-                f"Host: {orig_host}\r\n"
-                f"X-Radar-Peer: {self.client_address[0]}\r\n"
-                f"{fwd}"
-                f"Upgrade: websocket\r\nConnection: Upgrade\r\n"
-                f"Sec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n\r\n"
-            ).encode())
-            # Consume the backend's 101 response before forwarding raw frames
-            resp = b""
-            while b"\r\n\r\n" not in resp:
-                chunk = backend.recv(4096)
-                if not chunk:
-                    backend.close()
-                    return
-                resp += chunk
-            # Remove socket timeouts then forward bytes in both directions
-            client_sock = self.connection
-            client_sock.settimeout(None)
-            backend.settimeout(None)
-            def _fwd(src, dst):
-                try:
-                    while True:
-                        d = src.recv(65536)
-                        if not d:
-                            break
-                        dst.sendall(d)
-                except Exception:
-                    pass
-                finally:
-                    for s in (src, dst):
-                        try: s.close()
-                        except: pass
-            t1 = threading.Thread(target=_fwd, args=(client_sock, backend), daemon=True)
-            t2 = threading.Thread(target=_fwd, args=(backend, client_sock), daemon=True)
-            t1.start(); t2.start()
-            t1.join(); t2.join()
-            # Tell the HTTP machinery not to reuse this socket after the proxy ends
-            self.close_connection = True
-
     import socketserver
     class _Server(socketserver.ThreadingMixIn, http.server.HTTPServer):
         daemon_threads = True
@@ -3002,6 +2922,7 @@ def _start_http(static_dir: str, maps_cache: Path):
     srv = _Server(("0.0.0.0", HTTP_PORT), _Handler)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     log.info("HTTP  -> http://0.0.0.0:%d  (maps_cache=%s)", HTTP_PORT, _maps)
+    return srv
 
 
 def _ensure_firewall_rules():

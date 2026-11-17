@@ -35,8 +35,7 @@ trap cleanup EXIT
 
 if command -v npm >/dev/null 2>&1; then
   echo "[1/2] Starting frontend dev server..."
-  # Vite only: the helper serves the WebSocket on 22006 itself, and the relay
-  # that `npm run dev` also starts would take that port.
+  # Vite serves HTTP on 5173; the helper independently owns WebSocket 22006.
   (cd "$WEBAPP_DIR" && exec setsid npx vite) &
   FRONTEND_PID="$!"
   sleep 2

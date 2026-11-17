@@ -57,11 +57,23 @@ weapon labels and the C4 icon stay upright for both manual and automatic rotatio
 
 ## Multiple viewers (no account needed)
 
-HTTP and WebSocket data use the same address and port: opening
-`http://PUBLIC_IP:5173` connects to `ws://PUBLIC_IP:5173/cs2_webradar` through the
-existing server proxy. Only the web port needs forwarding for browser viewers;
-do not point remote browsers at `localhost`. HTTPS uses `wss://` on the page's
-host and port. An explicit `VITE_WS_URL` still overrides this default.
+HTTP serves the site on **5173**; WebSocket game data is served separately on
+**22006**. Opening `http://PUBLIC_IP:5173` connects directly to
+`ws://PUBLIC_IP:22006/cs2_webradar`. Forward both ports for remote browser viewers.
+Vite and the built-in HTTP server do not proxy WebSocket connections.
+
+The default data host is the page hostname, including IPv6. An explicit
+`VITE_WS_URL` overrides the default endpoint. HTTPS pages select `wss://` on
+port 22006; the helper itself provides plain `ws://`, so HTTPS deployments need
+a TLS WebSocket reverse proxy and an appropriate explicit endpoint. The helper
+accepts browser origins on the same hostname (the HTTP and WS ports may differ);
+an endpoint on an unrelated hostname is rejected by the existing origin policy.
+Native perspective clients do not send a browser Origin and can connect to a
+remote helper directly. Custom helper hostnames must be listed in `allowed_hosts`.
+
+For source development, `npm run dev` starts Vite only. Run the Python helper
+separately; it owns the data port. The old `webapp/ws/app.js` relay is optional
+and must not be started alongside the helper on the same port.
 
 Open the same radar URL on each device, then choose yourself in **Settings → Your
 Player**. Your selection determines your marker, teammates/enemies, view rotation,
