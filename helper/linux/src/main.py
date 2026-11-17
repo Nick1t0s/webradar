@@ -979,6 +979,7 @@ def _find_client_dll(pid: int | None = None) -> Path | None:
 # How often the main loop re-checks whether CS2's client module changed on disk
 # (i.e. the game was updated) so it can auto-refresh offsets without a restart.
 OFFSET_RECHECK_SEC = 600.0
+READER_RECOVERY_SEC = 30.0  # Retry live setup when no player data arrives.
 
 def _client_dll_mtime(pid: int | None = None) -> float:
     """On-disk mtime of the client module — the ground-truth signal that the game
@@ -2599,9 +2600,9 @@ class CS2Reader:
         trusted when no steam_id is known — on native Linux it can read true
         on another player's controller, which flips the radar team colors.
 
-        Caches the result; when a steam_id is known the cache is re-validated
-        each call so entity-slot reuse after a map change triggers a rescan.
-        Throttled to one scan per 2 seconds.
+        Кэш проверяется при каждом вызове: по Steam ID либо по локальному
+        флагу и признакам контроллера. Повторный поиск ограничен одним разом
+        в две секунды, включая смену карты и освобождение старого адреса.
         """
         off_steam = self._off("CBasePlayerController", "m_steamID")
         if self._lpc_fallback:
@@ -2614,8 +2615,19 @@ class CS2Reader:
                     pass
                 self._lpc_fallback = 0   # stale — entity recycled on map change
             else:
-                # Found via m_bIsLocalPlayerController flag — no steam_id re-check.
-                return self._lpc_fallback
+                # A flag-only hit during loading can be an unrelated allocation.
+                # Keep real controllers across brief team changes, but do not pin
+                # an untyped, team-less address forever after the map has loaded.
+                off_local = self._off("CBasePlayerController", "m_bIsLocalPlayerController")
+                off_team = self._off("C_BaseEntity", "m_iTeamNum")
+                try:
+                    team = (self.mem.u32(self._lpc_fallback + off_team) & 0xFF) if off_team else 0
+                    if (off_local and self.mem.bool8(self._lpc_fallback + off_local)
+                            and (team in (2, 3) or self._class_name(self._lpc_fallback) == "CCSPlayerController")):
+                        return self._lpc_fallback
+                except OSError:
+                    pass  # The cached allocation may have been released during loading.
+                self._lpc_fallback = 0
 
         now = time.monotonic()
         if now - self._last_lpc_scan < 2.0:
@@ -4590,8 +4602,7 @@ async def _run_async():
             webbrowser.open(f"http://localhost:{HTTP_PORT}")
 
         _last_map = None
-        _none_streak = 0          # consecutive collect() → None frames
-        _last_good_data = 0.0     # time of last successful broadcast
+        _missing_since: float | None = None
 
         _setup_failures = 0
         _did_local_scan  = False
@@ -4625,7 +4636,9 @@ async def _run_async():
                         extractor.cs2_dir = cs2_root
                         log.info("CS2 root resolved from process maps: %s", cs2_root)
                 reader = None
+                _missing_since = None
                 _setup_failures = 0
+                _did_local_scan = False
                 # Force an offset freshness check on this newly-attached process:
                 # CS2 may have been updated and relaunched while we kept running.
                 _last_offset_check = 0.0
@@ -4650,6 +4663,7 @@ async def _run_async():
                         offsets.update(new_off)
                         offset_dll_mtime = cur_mtime
                         reader = None            # force setup() with fresh offsets
+                        _missing_since = None
                         _did_local_scan = False
                     except Exception as exc:
                         # Keep running on the current offsets; retry next interval.
@@ -4667,6 +4681,7 @@ async def _run_async():
                     offset_dll_mtime = await loop.run_in_executor(
                         None, lambda: _client_dll_mtime(mem.pid))
                     reader = None            # setup() re-resolves everything
+                    _missing_since = None
                     _did_local_scan = False
                     log.info("offsets refreshed on request")
                 except Exception as exc:
@@ -4718,26 +4733,31 @@ async def _run_async():
             try:
                 data = await loop.run_in_executor(None, reader.collect)
                 if data is None:
-                    _none_streak += 1
-                    now = time.time()
-                    if now - _last_waiting_log >= 5:
-                        log.info("in CS2 but not in an active match (team=spectator/none)")
-                        _last_waiting_log = now
-                    _set_status("menu", "In CS2 but not playing a match (menu or spectating)")
-                    await _broadcast_status()
-                    # If data has been None for >30s and we had good data before,
-                    # verify CS2 is still alive (silent RPM failure won't raise OSError
-                    # until the next valid address read; this catches the gap).
-                    if _none_streak > 100 and _last_good_data > 0:
+                    now = time.monotonic()
+                    if _missing_since is None:
+                        _missing_since = now
+                    if time.time() - _last_waiting_log >= 5:
+                        log.info("no player data: menu, spectator or reader needs recovery")
+                        _last_waiting_log = time.time()
+                    if now - _missing_since >= READER_RECOVERY_SEC:
                         live_pid = await loop.run_in_executor(None, lambda: mem.find_pid(process_names[0]))
                         if not live_pid or live_pid != mem.pid:
                             log.warning("CS2 gone (watchdog) — detaching")
                             mem.close()
-                            reader = None
-                            _none_streak = 0
+                            _set_status("no_game", "Lost the CS2 process, waiting for it to restart")
+                        else:
+                            log.info("no player data for %.0fs — rebuilding the reader from live game state",
+                                     now - _missing_since)
+                            _set_status("loading", "No player data; reinitializing the game reader")
+                        reader = None
+                        _missing_since = None
+                        _setup_failures = 0
+                        _did_local_scan = False
+                    else:
+                        _set_status("menu", "No player data: menu/spectating or waiting for reader recovery")
+                    await _broadcast_status()
                 else:
-                    _none_streak = 0
-                    _last_good_data = time.time()
+                    _missing_since = None
                     map_name = data.get("m_map", "invalid")
                     if map_name != _last_map and map_name != "invalid":
                         _last_map = map_name
@@ -4750,7 +4770,7 @@ async def _run_async():
                 _set_status("no_game", "Lost the CS2 process, waiting for it to restart")
                 mem.close()
                 reader = None
-                _none_streak = 0
+                _missing_since = None
             except Exception as exc:
                 log.error("unexpected error in collect/send: %s", exc, exc_info=True)
 
