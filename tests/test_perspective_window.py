@@ -1,6 +1,7 @@
 """Real Tk + WebSocket integration. Requires a graphical DISPLAY (XWayland works)."""
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import replace
 import json
 import os
@@ -11,6 +12,7 @@ import time
 import tkinter as tk
 from tkinter import ttk
 import unittest
+from unittest.mock import patch
 
 from websockets.exceptions import ConnectionClosed
 from websockets.sync.server import ServerConnection, serve
@@ -22,6 +24,79 @@ from tests.test_perspective import player_data
 
 @unittest.skipUnless(os.environ.get("DISPLAY"), "Tk integration needs DISPLAY / XWayland")
 class WindowTests(unittest.TestCase):
+    def test_helper_status_precedes_missing_cfg_and_match_selects_profile(self) -> None:
+        """Показывает статус helper до разрешения и выбирает cfg по живому Steam ID."""
+        stop, playing, unknown_player, silent, broken = (Event() for _ in range(5))
+        menu = "In CS2 but not playing a match"
+        def handle(connection: ServerConnection) -> None:
+            """Передаёт состояния меню, матча, тишины и разрыва настоящего соединения."""
+            try:
+                while not stop.wait(0.02):
+                    if broken.is_set():
+                        connection.close()
+                        return
+                    if silent.is_set():
+                        continue
+                    payload: dict[str, object]
+                    if playing.is_set():
+                        slot = 2 if unknown_player.is_set() else 1
+                        payload = {"m_players": [player_data(slot)]}
+                    else:
+                        payload = {"type": "status", "state": "menu", "detail": menu}
+                    connection.send(json.dumps(payload))
+            except (OSError, ConnectionClosed):
+                pass
+        with tempfile.TemporaryDirectory() as directory, serve(handle, "127.0.0.1", 0) as server:
+            folder = Path(directory)
+            profiles: list[Path] = []
+            account = 76561198000000001 - 76561197960265728
+            for number, resolution in ((account + 10, (800, 600)), (account, (1600, 900)), (account + 20, (1024, 768))):
+                cfg = folder / "userdata" / str(number) / "730" / "local" / "cfg"
+                cfg.mkdir(parents=True)
+                (cfg / "cs2_video.txt").write_text(
+                    f'"setting.defaultres" "{resolution[0]}"\n"setting.defaultresheight" "{resolution[1]}"\n',
+                    encoding="utf-8")
+                profiles.append(cfg)
+            path = folder / "settings.json"
+            configured = replace(Settings.load(path), ws_url=f"ws://127.0.0.1:{server.socket.getsockname()[1]}/cs2_webradar")
+            thread = Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            root = tk.Tk()
+            with patch("perspective.window.discover_cfg_dirs", return_value=tuple(profiles)):
+                window = PerspectiveWindow(root, configured, path)
+            def pump_until(predicate: Callable[[], bool]) -> None:
+                """Обрабатывает события Tk до нужного состояния либо тайм-аута."""
+                deadline = time.monotonic() + 4
+                while not predicate():
+                    root.update()
+                    if time.monotonic() >= deadline:
+                        self.fail(f"Не дождались состояния: {window.status.get()}")
+                    time.sleep(0.005)
+            try:
+                pump_until(lambda: window.status.get() == menu)
+                self.assertIsNone(window.video.width)
+                text: object = root.tk.call(str(window.canvas), "itemcget", window.canvas.find_withtag("scene")[0], "-text")
+                self.assertEqual(text, menu)
+                playing.set()
+                pump_until(lambda: "1600×900" in window.status.get())
+                self.assertEqual(window.video.source, str(profiles[1]))
+                self.assertEqual((window.video.width, window.video.height), (1600, 900))
+                unknown_player.set()
+                pump_until(lambda: "Выберите папку cfg" in window.status.get())
+                self.assertIsNone(window.video.width)
+                window.settings = replace(window.settings, player="steam:999")
+                pump_until(lambda: window.status.get().startswith("Ожидание выбранного"))
+                silent.set()
+                pump_until(lambda: window.status.get() == "Нет свежих данных helper")
+                broken.set()
+                pump_until(lambda: window.status.get().startswith("Нет связи с helper"))
+                self.assertEqual(window.frame.players, ())
+            finally:
+                stop.set()
+                window.close()
+                server.shutdown()
+                thread.join(timeout=2)
+
     def test_real_stream_selection_resize_settings_and_disconnect(self) -> None:
         stop = Event()
         broken = Event()
