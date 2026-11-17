@@ -30,7 +30,15 @@ Entry: `webapp/src/app.jsx`
 - `getWebSocketUrl` uses the page's hostname on separate port 22006 for HTTP (`ws://`) and HTTPS (`wss://`); neither Vite nor the helper's HTTP server proxies game data
 - `USE_LOCALHOST` explicitly forces direct loopback `ws://localhost:22006` for legacy local-only setups
 - `VITE_WS_URL` env var overrides for ngrok tunnels
+- Saved `radarConnectionUrl` from **Data source (WebSocket)** takes precedence over `VITE_WS_URL`; connection settings are separate from player profiles. Source changes clear old frames and reconnect without helper-control commands.
 - Remote browser viewers need both HTTP port 5173 and WS port 22006 exposed; HTTPS needs a TLS WS proxy with an explicit endpoint
+
+**Native perspective:** `OverlayState` shares receiving, camera settings, source
+reload and stale-frame handling across Linux GTK/layer-shell (`overlay.py`) and
+Windows Tk/Win32 (`overlay_windows.py`). `geometry.Rect` and `overlay_scene.py`
+are platform independent. `python -m perspective --overlay` selects the platform
+lazily. The source is the explicit `ws_url` in `perspective/settings.json`, also
+editable through the control window. Windows needs windowed/borderless CS2.
 
 **JSON payload fields** received from the helper:
 - `m_players[]` — array of player objects (m_position.x/y, m_team, m_health, m_eye_angle, m_weapons, etc.)

@@ -91,10 +91,13 @@ It subscribes to the existing helper; no browser or second memory reader is need
 It reads CS2 camera/video settings, supports manual overrides and a size multiplier,
 and preserves aspect ratio with black bars under tiling window managers (Hyprland).
 Run `./perspective/run-linux.sh` or `perspective\run-windows.bat` after restarting
-the updated helper. On Linux/Hyprland, **Enable overlay** in the perspective window
-or `./perspective/run-linux.sh --overlay` adds a transparent native Wayland layer
-above CS2, with mouse/keyboard input passed through to the game. The layer follows
-the game window and hides when another application is active.
+the updated helper. **Enable overlay** adds a transparent native layer above CS2
+on Windows 10/11 or Linux/Hyprland, with mouse/keyboard input passed through to the
+game. Direct launch: `perspective\run-windows.bat --overlay` or
+`./perspective/run-linux.sh --overlay`. Windows requires windowed or borderless
+CS2. The layer follows the game window and hides when another application is
+active. **Подключение…** selects the helper's WebSocket address independently of
+the site; the current source is always shown in the control window.
 See [perspective/README.md](perspective/README.md).
 
 | Flag | Description |

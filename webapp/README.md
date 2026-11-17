@@ -71,6 +71,13 @@ an endpoint on an unrelated hostname is rejected by the existing origin policy.
 Native perspective clients do not send a browser Origin and can connect to a
 remote helper directly. Custom helper hostnames must be listed in `allowed_hosts`.
 
+In radar and minimap **Settings → Data source (WebSocket)**, enter an explicit
+endpoint and click **Connect**. The browser saves it separately from player
+profiles and clears the old scene before reconnecting. **Use default** restores
+`VITE_WS_URL` or the page hostname on port 22006. A saved endpoint takes precedence
+over the build-time environment setting. Browser sources must retain the site's
+hostname under the helper's existing Origin policy.
+
 For source development, `npm run dev` starts Vite only. Run the Python helper
 separately; it owns the data port. The old `webapp/ws/app.js` relay is optional
 and must not be started alongside the helper on the same port.
