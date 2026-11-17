@@ -73,6 +73,9 @@ class RecoilSample:
     shots: Annotated[int, Field(strict=True, ge=0, le=1000)]
 
 
+ZERO_RECOIL = RecoilSample(0, 0, 0)
+
+
 class RecoilMotion:
     """Ведёт одну очередь, сохраняя доли отсчётов и блокируя повтор после прерывания."""
 
@@ -157,6 +160,8 @@ class RecoilFeedback:
             self.reset()
             self.released = True
             self.previous, self.sample_at = sample, sample_at
+            if sample is not None and sample.shots == 0:
+                self.previous = ZERO_RECOIL
             return 0, 0
         if not permitted or sample is None:
             self.reset()
@@ -171,16 +176,19 @@ class RecoilFeedback:
             return 0, 0
         self.tick_at = now
         if sample_at > self.sample_at:
-            previous = self.previous
-            if sample.shots == 0 or (previous is not None and sample.shots < previous.shots):
+            previous = self.previous or ZERO_RECOIL
+            if sample.shots == 0 or sample.shots < previous.shots:
                 self.target_x = self.target_y = 0.0
                 self.sent_x = self.sent_y = 0
-            elif previous is not None:
+                previous = ZERO_RECOIL
+            if sample.shots > 0:
                 # Nominal CS2 m_yaw/m_pitch = 0.022; aim-punch scale = 2.
                 factor = 2 * settings.strength / (0.022 * settings.sensitivity)
                 self.target_x += (sample.yaw - previous.yaw) * factor
                 self.target_y -= (sample.pitch - previous.pitch) * factor
-            self.previous, self.sample_at = sample, sample_at
+            # Base angles can retain the previous burst while shots is already zero.
+            self.previous = sample if sample.shots > 0 else ZERO_RECOIL
+            self.sample_at = sample_at
         dx, dy = math.trunc(self.target_x) - self.sent_x, math.trunc(self.target_y) - self.sent_y
         if abs(dx) > 1000 or abs(dy) > 1000:
             self.reset()

@@ -48,6 +48,42 @@ class FeedbackTests(unittest.TestCase):
         self.assertGreater(dy, 0)
         self.assertEqual(motion.advance(1.03, True, RecoilSample(0, 0, 0), 1.03, settings, True), (0, 0))
 
+    def test_idle_retained_angles_do_not_kick_the_next_burst_up_and_right(self) -> None:
+        """Воспроизводит живую телеметрию: старый угол остаётся при нуле выстрелов."""
+        settings = RecoilSettings(mode="feedback", sensitivity=1.3)
+        motion = RecoilFeedback()
+        retained = RecoilSample(-1.9946417808532715, -0.2032420039176941, 0)
+        motion.advance(1, False, retained, 1, settings, True)
+        first = RecoilSample(0, 0, 1)
+        self.assertEqual(motion.advance(1.01, True, first, 1.01, settings, True), (0, 0))
+        self.assertEqual(motion.advance(1.02, True, first, 1.01, settings, True), (0, 0))
+        second = RecoilSample(-0.07557763904333115, 0.015299688093364239, 2)
+        dx, dy = motion.advance(1.03, True, second, 1.03, settings, True)
+        self.assertGreaterEqual(dx, 0)
+        self.assertGreater(dy, 0)
+        self.assertLess(dy, 10)
+
+    def test_counter_reset_without_an_idle_frame_compensates_the_first_shot(self) -> None:
+        """При пропуске нулевого кадра начинает новую очередь с нуля и не теряет первый выстрел."""
+        settings, motion = RecoilSettings(mode="feedback"), RecoilFeedback()
+        old = RecoilSample(-4, -1, 10)
+        motion.advance(1, False, old, 1, settings, True)
+        first = RecoilSample(-0.22, 0.11, 1)
+        dx, dy = motion.advance(1.01, True, first, 1.01, settings, True)
+        factor = 2 / (0.022 * settings.sensitivity)
+        self.assertAlmostEqual(dx, first.yaw * factor, delta=1)
+        self.assertAlmostEqual(dy, -first.pitch * factor, delta=1)
+        self.assertGreater(dy, 0)
+
+    def test_held_trigger_ignores_idle_base_angle_changes_between_bursts(self) -> None:
+        """Сброс угла при нулевом счётчике не двигает мышь даже при удержании ЛКМ."""
+        settings, motion = RecoilSettings(mode="feedback"), RecoilFeedback()
+        motion.advance(1, False, RecoilSample(0, 0, 0), 1, settings, True)
+        motion.advance(1.01, True, RecoilSample(-0.22, -0.11, 1), 1.01, settings, True)
+        self.assertEqual(motion.advance(1.02, True, RecoilSample(-2, -0.5, 0), 1.02, settings, True), (0, 0))
+        self.assertEqual(motion.advance(1.03, True, RecoilSample(-1, 0.3, 0), 1.03, settings, True), (0, 0))
+        self.assertEqual(motion.advance(1.04, True, RecoilSample(0, 0, 1), 1.04, settings, True), (0, 0))
+
     def test_pending_movement_is_bounded_and_interrupt_requires_release(self) -> None:
         """Дробит большой корректирующий шаг и отменяет остаток при прерывании."""
         settings, motion = RecoilSettings(mode="feedback"), RecoilFeedback()
