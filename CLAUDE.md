@@ -45,6 +45,11 @@ estimated eye coordinates. Remote-player selections and manual FOV continue to
 use `Camera` reconstruction. Both cameras share clipping and box topology; matrix
 aspect controls the rendered viewport. Invalid optional matrices preserve the
 rest of the frame and fall back to reconstruction.
+`show_view_rays` defaults to true and migrates older settings. `project_view_ray`
+projects other living players' eye-origin yaw/pitch segments through the same
+camera as their boxes; `PlayerOutline.view_ray` carries mapped overlay geometry.
+All three native renderers draw the rays before HP box outlines. The setting is
+local and needs no helper commands or payload changes.
 
 **JSON payload fields** received from the helper:
 - `m_players[]` — array of player objects (m_position.x/y, m_team, m_health, m_eye_angle, m_weapons, etc.)
