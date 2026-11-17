@@ -86,9 +86,18 @@ class NativeOverlayTests(unittest.TestCase):
             overlay: subprocess.Popen[bytes] | None = None
             with (root / "overlay.log").open("wb") as log:
                 try:
+                    def game_mapped() -> bool:
+                        """Ждёт отображения только собственного тестового окна."""
+                        clients = query("clients")
+                        assert isinstance(clients, list)
+                        return any(object_fields(client).get("pid") == game.pid and object_fields(client).get("mapped") is True
+                                   for client in cast(list[object], clients))
                     def game_active() -> bool:
+                        """Проверяет фокус полноэкранного тестового окна."""
                         active = object_fields(query("activewindow"))
                         return active.get("pid") == game.pid and active.get("fullscreen") != 0
+                    wait_until(game_mapped)
+                    subprocess.run(["hyprctl", "dispatch", "focuswindow", f"pid:{game.pid}"], check=True, capture_output=True)
                     wait_until(game_active)
                     target = object_fields(query("activewindow"))
                     self.assertEqual(target["class"], "cs2")
