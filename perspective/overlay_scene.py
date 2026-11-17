@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from .config import GameVideo, Settings, SettingsError
-from .hyprland import Rect
+from .geometry import Rect
 from .scene import Camera, Frame, Segment, Vec3, fit_viewport
 
 
@@ -16,6 +16,7 @@ class PlayerOutline:
 
 def overlay_boxes(frame: Frame, settings: Settings, video: GameVideo,
                   game: Rect) -> tuple[PlayerOutline, ...]:
+    """Строит каркасы игроков в отображаемой области игры."""
     player = frame.selected(settings.player)
     if player is None or player.dead or player.pitch is None:
         return ()
@@ -33,6 +34,7 @@ def overlay_boxes(frame: Frame, settings: Settings, video: GameVideo,
     else:
         x, y, w, h = fit_viewport(game.width, game.height, aspect, game.width)
     def transform(segment: Segment) -> Segment:
+        """Переносит проекцию в отображаемый прямоугольник игры."""
         a, b = segment
         return ((game.x + x + a[0] * w / width, game.y + y + a[1] * h / height),
                 (game.x + x + b[0] * w / width, game.y + y + b[1] * h / height))
