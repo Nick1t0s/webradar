@@ -155,32 +155,39 @@ class PerspectiveWindow:
             self.draw()
         self.timer = self.root.after(8, self._tick)
 
+    def _show_status(self, message: str) -> None:
+        """Показывает причину ожидания в строке состояния и на поле перспективы."""
+        self.status.set(message)
+        width, height = self.canvas.winfo_width(), self.canvas.winfo_height()
+        self.canvas.create_text(width / 2, height / 2, text=message, fill="white",
+                                width=max(100, width - 40), tags="scene")
+
     def draw(self) -> None:
+        """Рисует перспективу, сохраняя приоритет состояния источника данных."""
         canvas = self.canvas
         canvas.delete("scene")
         width, height = float(canvas.winfo_width()), float(canvas.winfo_height())
         if width <= 1 or height <= 1:
             return
+        if self.connection_status:
+            self._show_status(self.connection_status)
+            return
+        if time.monotonic() - self.last_frame_at > 2:
+            self._show_status("Нет свежих данных helper")
+            return
+        player = self.frame.selected(self.settings.player)
+        if player is None or player.dead:
+            self._show_status("Ожидание выбранного живого игрока; автоматической подмены игрока нет")
+            return
         try:
             game_width, game_height = self.video.resolution(self.settings)
         except SettingsError as exc:
-            self.status.set(str(exc))
-            canvas.create_text(width / 2, height / 2, text=str(exc), fill="white", width=max(100, width - 40), tags="scene")
+            self._show_status(str(exc))
             return
         aspect = game_width / game_height
         left, top, view_width, view_height = fit_viewport(width, height, aspect, game_width * self.settings.scale)
         canvas.create_rectangle(left, top, left + view_width, top + view_height, fill="white", outline="", tags="scene")
         # All content is clipped to the same viewport; bars remain black under tiling.
-        player = self.frame.selected(self.settings.player)
-        if self.connection_status:
-            self.status.set(self.connection_status)
-            return
-        if time.monotonic() - self.last_frame_at > 2:
-            self.status.set("Нет свежих данных helper")
-            return
-        if player is None or player.dead:
-            self.status.set("Ожидание выбранного живого игрока; автоматической подмены игрока нет")
-            return
         if player.pitch is None:
             self.status.set("Helper не передаёт вертикальный угол. Перезапустите обновлённый helper")
             return
