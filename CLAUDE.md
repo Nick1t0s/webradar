@@ -39,6 +39,12 @@ Windows Tk/Win32 (`overlay_windows.py`). `geometry.Rect` and `overlay_scene.py`
 are platform independent. `python -m perspective --overlay` selects the platform
 lazily. The source is the explicit `ws_url` in `perspective/settings.json`, also
 editable through the control window. Windows needs windowed/borderless CS2.
+`Frame` validates optional `m_view_matrix` as `MatrixCamera`. It takes priority
+for a living helper-local player without manual FOV, avoiding stale cfg FOV and
+estimated eye coordinates. Remote-player selections and manual FOV continue to
+use `Camera` reconstruction. Both cameras share clipping and box topology; matrix
+aspect controls the rendered viewport. Invalid optional matrices preserve the
+rest of the frame and fall back to reconstruction.
 
 **JSON payload fields** received from the helper:
 - `m_players[]` — array of player objects (m_position.x/y, m_team, m_health, m_eye_angle, m_weapons, etc.)

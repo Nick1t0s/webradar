@@ -86,7 +86,9 @@ python src/main.py --normal       # or --overlay / --esp
 ## Modes
 
 An additional **native Python perspective window** shows player boxes on a white
-background from a selected player's yaw and pitch, with configurable teammate/enemy colors.
+background, with configurable teammate/enemy colors. For the helper's local player,
+it uses the actual render matrix; other players use their own yaw/pitch and camera
+parameters. An explicit manual FOV selects camera reconstruction instead.
 It subscribes to the existing helper; no browser or second memory reader is needed.
 It reads CS2 camera/video settings, supports manual overrides and a size multiplier,
 and preserves aspect ratio with black bars under tiling window managers (Hyprland).
