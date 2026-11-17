@@ -49,6 +49,8 @@ def overlay_layers() -> list[dict[str, object]]:
 @unittest.skipUnless(os.environ.get("WEBRADAR_HYPRLAND_TEST") == "1", "Set WEBRADAR_HYPRLAND_TEST=1 for compositor integration")
 class NativeOverlayTests(unittest.TestCase):
     def test_fullscreen_transparency_focus_clickthrough_and_hide(self) -> None:
+        if query("locked") is True:
+            self.skipTest("Hyprland session is locked; unlock it for native GUI integration")
         import cairo
         stop = Event()
         players = [player_data(), dict(player_data(2, False), m_health=25,
