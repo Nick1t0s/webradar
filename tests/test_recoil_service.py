@@ -22,7 +22,7 @@ from tests.test_perspective import player_data, settings
 
 if sys.platform.startswith("linux"):
     import fcntl
-    from perspective.recoil_linux import RecoilService
+    from perspective.recoil_linux import RecoilService, owner_status, publish_status
     from perspective.mouse_linux import BTN_LEFT, LinuxMouse, MouseDevice, VIRTUAL_NAME
 
 
@@ -94,7 +94,7 @@ class ServiceTests(unittest.TestCase):
                 try:
                     self.wait_for(lambda: "пауза" in first.status)
                     second.start()
-                    self.wait_for(lambda: "другим" in second.status)
+                    self.wait_for(lambda: "пауза" in second.status)
                     self.assertEqual(constructor.call_count, 1)
                     source.toggle = True
                     self.wait_for(lambda: "готово" in first.status)
@@ -102,6 +102,8 @@ class ServiceTests(unittest.TestCase):
                     time.sleep(0.55)  # Compositor discovery delay; no physical events are sent.
                     source.pressed = True
                     self.wait_for(lambda: len(source.moves) >= 2)
+                    self.wait_for(lambda: "ak47" in second.status)
+                    self.assertEqual(constructor.call_count, 1)
                     focused.clear()
                     self.wait_for(lambda: "активной CS2" in first.status)
                     count = len(source.moves)
@@ -133,6 +135,20 @@ class ServiceTests(unittest.TestCase):
                     thread.join(timeout=2)
             self.assertFalse(first.thread.is_alive())
             self.assertFalse(second.thread.is_alive())
+
+    def test_observer_ignores_missing_broken_and_stale_owner_status(self) -> None:
+        """Не показывает старую готовность после остановки владельца или повреждения записи."""
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "status.json"
+            now = time.monotonic()
+            self.assertIn("ожидание", owner_status(path, now))
+            for content in ('broken', '[]', '{"message": 12, "updated_at": 1}'):
+                path.write_text(content)
+                self.assertIn("ожидание", owner_status(path, now))
+            publish_status(path, "Отдача: пауза", now)
+            self.assertEqual(owner_status(path, now + 0.5), "Отдача: пауза")
+            self.assertIn("ожидание", owner_status(path, now + 2.1))
+            self.assertIn("ожидание", owner_status(path, now - 1))
 
     def test_disabled_service_never_opens_input_or_connects(self) -> None:
         """Сохраняет прежний режим перспективы без доступа к устройствам."""
