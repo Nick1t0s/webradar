@@ -219,13 +219,18 @@ class WindowsOverlay:
         self.timer = self.root.after(8, self._tick)
 
     def _draw(self, game: Rect) -> None:
-        """Рисует каркасы с чёрной обводкой и горизонтальным уровнем здоровья."""
+        """Рисует лучи и каркасы с чёрной обводкой и уровнем здоровья."""
         self.canvas.delete("scene")
         try:
             boxes = self.state.boxes(Rect(0, 0, game.width, game.height))
         except SettingsError as exc:
             self._message(str(exc))
             return
+        for box in boxes:
+            if box.view_ray is not None:
+                a, b = box.view_ray
+                self.canvas.create_line(*a, *b, fill="black", width=3, tags=("scene", "view-ray"))
+                self.canvas.create_line(*a, *b, fill=box.color, width=1.5, tags=("scene", "view-ray"))
         for box in boxes:
             for a, b in box.segments:
                 self.canvas.create_line(*a, *b, fill="black", width=4, tags="scene")

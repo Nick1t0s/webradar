@@ -18,6 +18,7 @@ from websockets.exceptions import ConnectionClosed
 from websockets.sync.server import ServerConnection, serve
 
 from perspective.config import Settings
+from perspective.scene import Camera, MatrixCamera, Vec3, project_view_ray
 from perspective.window import PerspectiveWindow
 from tests.test_matrix_projection import render_matrix
 from tests.test_perspective import player_data
@@ -25,6 +26,117 @@ from tests.test_perspective import player_data
 
 @unittest.skipUnless(os.environ.get("DISPLAY"), "Tk integration needs DISPLAY / XWayland")
 class WindowTests(unittest.TestCase):
+    def test_view_rays_follow_camera_toggle_and_clear_with_invalid_players(self) -> None:
+        """Проверяет геометрию лучей, сохранение переключателя и очистку настоящего окна."""
+        stop, dead, no_pitch, empty, silent = (Event() for _ in range(5))
+        local = player_data()
+        target = dict(player_data(2, False), m_health=25,
+                      m_position={"x": 200, "y": -45, "z": 0},
+                      m_eye_position={"x": 200, "y": -45, "z": 64},
+                      m_eye_angle=90, m_eye_pitch=-12)
+        def handle(connection: ServerConnection) -> None:
+            """Передаёт живого, мёртвого и потерявшего угол игрока через WebSocket."""
+            try:
+                while not stop.wait(0.02):
+                    if silent.is_set():
+                        continue
+                    other = dict(target)
+                    if dead.is_set():
+                        other["m_health"] = 0
+                        other["m_is_dead"] = True
+                    if no_pitch.is_set():
+                        other.pop("m_eye_pitch")
+                    connection.send(json.dumps({"m_players": [] if empty.is_set() else [local, other],
+                                                "m_view_matrix": render_matrix()}))
+            except (OSError, ConnectionClosed):
+                pass
+        with tempfile.TemporaryDirectory() as directory, serve(handle, "127.0.0.1", 0) as server:
+            path = Path(directory) / "settings.json"
+            configured = replace(Settings.load(path), width=1280, height=800, scale=0.5,
+                                 teammate_color="#123456", enemy_color="#abcdef", overlay_stretch=True,
+                                 ws_url=f"ws://127.0.0.1:{server.socket.getsockname()[1]}/cs2_webradar")
+            thread = Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            root = tk.Tk()
+            window = PerspectiveWindow(root, configured, path)
+            def pump_until(predicate: Callable[[], bool]) -> None:
+                """Обрабатывает реальные события до нужного состояния сцены."""
+                deadline = time.monotonic() + 4
+                while not predicate():
+                    root.update()
+                    if time.monotonic() >= deadline:
+                        self.fail(f"Не дождались состояния: {window.status.get()}")
+                    time.sleep(0.005)
+            def check_geometry() -> None:
+                """Сверяет нарисованный луч с активной камерой каркасов."""
+                selected = window.frame.selected(window.settings.player)
+                assert selected is not None
+                matrix = window.frame.local_camera(selected, window.settings.fov)
+                camera: Camera | MatrixCamera
+                if matrix is not None:
+                    camera = replace(matrix, maximum_width=1280 * window.settings.scale)
+                else:
+                    camera = Camera(selected.eye or selected.position.add(Vec3(0, 0, window.settings.eye_height)),
+                                    selected.yaw, selected.pitch or 0, window.settings.fov or 90,
+                                    1280 / 800, 1280 * window.settings.scale)
+                ray = project_view_ray(camera.project_edge, window.frame.players[1],
+                                       window.canvas.winfo_width(), window.canvas.winfo_height(),
+                                       window.settings.eye_height)
+                assert ray is not None
+                items = window.canvas.find_withtag("view-ray")
+                self.assertEqual(len(items), 2, "Должен быть только луч другого игрока с обводкой")
+                for actual, expected in zip(window.canvas.coords(items[1]), (*ray[0], *ray[1])):
+                    self.assertAlmostEqual(actual, expected)
+                color: object = root.tk.call(str(window.canvas), "itemcget", items[1], "-fill")
+                self.assertEqual(color, configured.enemy_color)
+                self.assertLess(items[-1], window.canvas.find_withtag("scene")[-1], "Луч закрывает каркас")
+            def toggle_rays() -> None:
+                """Нажимает переключатель и применяет настоящий диалог настроек."""
+                window.open_settings()
+                root.update()
+                dialog = next(widget for widget in root.winfo_children() if isinstance(widget, tk.Toplevel))
+                checkbox = next(widget for widget in dialog.winfo_children()
+                                if isinstance(widget, ttk.Checkbutton) and widget.cget("text") == "Направление взгляда игроков")
+                checkbox.invoke()
+                button = next(widget for widget in dialog.winfo_children()
+                              if isinstance(widget, ttk.Button) and widget.cget("text") == "Применить")
+                button.invoke()
+            try:
+                pump_until(lambda: len(window.canvas.find_withtag("view-ray")) == 2)
+                self.assertIn("матрица игры", window.status.get())
+                check_geometry()
+                toggle_rays()
+                self.assertFalse(window.canvas.find_withtag("view-ray"))
+                self.assertEqual(Settings.load(path), replace(configured, show_view_rays=False))
+                toggle_rays()
+                pump_until(lambda: len(window.canvas.find_withtag("view-ray")) == 2)
+                self.assertEqual(Settings.load(path), configured)
+                check_geometry()
+                window._apply_settings(replace(window.settings, fov=75))
+                root.update()
+                self.assertIn("вручную", window.status.get())
+                check_geometry()
+                dead.set()
+                pump_until(lambda: not window.canvas.find_withtag("view-ray"))
+                dead.clear()
+                pump_until(lambda: bool(window.canvas.find_withtag("view-ray")))
+                no_pitch.set()
+                pump_until(lambda: not window.canvas.find_withtag("view-ray"))
+                no_pitch.clear()
+                pump_until(lambda: bool(window.canvas.find_withtag("view-ray")))
+                empty.set()
+                pump_until(lambda: not window.canvas.find_withtag("view-ray"))
+                empty.clear()
+                pump_until(lambda: bool(window.canvas.find_withtag("view-ray")))
+                silent.set()
+                pump_until(lambda: window.status.get() == "Нет свежих данных helper")
+                self.assertFalse(window.canvas.find_withtag("view-ray"))
+            finally:
+                stop.set()
+                window.close()
+                server.shutdown()
+                thread.join(timeout=2)
+
     def test_live_matrix_replaces_stale_cfg_fov_and_does_not_leak_to_remote_player(self) -> None:
         """Использует матрицу локальной камеры, сохраняя удалённую перспективу и ручной FOV."""
         stop = Event()

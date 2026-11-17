@@ -1,4 +1,4 @@
-"""Tk window: colored player boxes and an aspect-preserving white viewport."""
+"""Tk window: player boxes, gaze rays and an aspect-preserving white viewport."""
 from __future__ import annotations
 
 from dataclasses import replace
@@ -12,7 +12,7 @@ from tkinter import colorchooser, filedialog, messagebox, ttk
 
 from .config import GameVideo, Settings, SettingsError, discover_cfg_dirs
 from .connection import RadarConnection
-from .scene import Camera, Frame, MatrixCamera, Vec3, player_health_strokes
+from .scene import Camera, Frame, MatrixCamera, Vec3, player_health_strokes, project_view_ray
 
 
 class PerspectiveWindow:
@@ -206,6 +206,16 @@ class PerspectiveWindow:
         left, top, view_width, view_height = camera.viewport(width, height)
         canvas.create_rectangle(left, top, left + view_width, top + view_height, fill="white", outline="", tags="scene")
         # All content is clipped to the same viewport; bars remain black under tiling.
+        if self.settings.show_view_rays:
+            for other in self.frame.players:
+                if other.identity == player.identity or other.dead:
+                    continue
+                ray = project_view_ray(camera.project_edge, other, width, height, self.settings.eye_height)
+                if ray is not None:
+                    a, b = ray
+                    canvas.create_line(*a, *b, fill="black", width=3, tags=("scene", "view-ray"))
+                    canvas.create_line(*a, *b, fill=self.settings.player_color(other, player),
+                                       width=1.5, tags=("scene", "view-ray"))
         for other in self.frame.players:
             if other.identity == player.identity or other.dead:
                 continue
@@ -280,12 +290,16 @@ class PerspectiveWindow:
         stretch = tk.BooleanVar(value=self.settings.overlay_stretch)
         ttk.Checkbutton(dialog, text="Оверлей: CS2 растягивает картинку на всё окно (без полос)", variable=stretch).grid(
             row=len(fields), column=0, columnspan=3, padx=10, pady=5, sticky="w")
+        view_rays = tk.BooleanVar(value=self.settings.show_view_rays)
+        ttk.Checkbutton(dialog, text="Направление взгляда игроков", variable=view_rays).grid(
+            row=len(fields) + 1, column=0, columnspan=3, padx=10, pady=5, sticky="w")
         ttk.Label(dialog, text=f"Адрес источника: ws://КОМПЬЮТЕР:22006/cs2_webradar (HTTP сайта — отдельно, 5173).\nНастройка действует и для оверлея поверх CS2.\nИсточник cfg: {self.video.source}\nЛокальная камера автоматически использует матрицу игры; ручной FOV отключает её.\nFOV cfg может отличаться от действующего FOV. viewmodel_fov не используется.\nМасштаб действует на отдельное окно; оверлей совмещается с полной игровой областью.",
-                  wraplength=680).grid(row=len(fields) + 1, column=0, columnspan=3, padx=10, pady=10, sticky="w")
+                  wraplength=680).grid(row=len(fields) + 2, column=0, columnspan=3, padx=10, pady=10, sticky="w")
         def apply() -> None:
             raw: dict[str, object] = {key: variable.get().strip() for key, variable in entries.items()}
             raw["player"] = self.settings.player
             raw["overlay_stretch"] = stretch.get()
+            raw["show_view_rays"] = view_rays.get()
             try:
                 for key in ("width", "height", "fov", "scale", "eye_height", "body_width", "body_height"):
                     text = entries[key].get().strip().replace(",", ".")
@@ -298,7 +312,7 @@ class PerspectiveWindow:
                 return
             self._apply_settings(updated)
             dialog.destroy()
-        ttk.Button(dialog, text="Применить", command=apply).grid(row=len(fields) + 2, column=1, pady=12)
+        ttk.Button(dialog, text="Применить", command=apply).grid(row=len(fields) + 3, column=1, pady=12)
 
     def close(self) -> None:
         self.root.after_cancel(self.timer)

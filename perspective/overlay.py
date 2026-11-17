@@ -177,7 +177,7 @@ class Overlay:
         return not self.closed
 
     def _draw(self, widget: Gtk.Widget, context: cairo.Context[cairo.Surface]) -> bool:
-        """Рисует общую сцену с прозрачным фоном и уровнем здоровья."""
+        """Рисует лучи и каркасы с прозрачным фоном и уровнем здоровья."""
         # Clear every frame to actual alpha=0, including unused letterbox areas.
         context.set_operator(cairo.OPERATOR_SOURCE)
         context.set_source_rgba(0, 0, 0, 0)
@@ -193,6 +193,20 @@ class Overlay:
         game = self.target.game
         context.rectangle(game.x, game.y, game.width, game.height)
         context.clip()
+        for box in boxes:
+            if box.view_ray is None:
+                continue
+            a, b = box.view_ray
+            context.set_line_width(3)
+            context.set_source_rgb(0, 0, 0)
+            context.move_to(*a)
+            context.line_to(*b)
+            context.stroke()
+            context.set_line_width(1.5)
+            context.set_source_rgb(*(int(box.color[i:i + 2], 16) / 255 for i in (1, 3, 5)))
+            context.move_to(*a)
+            context.line_to(*b)
+            context.stroke()
         # Dark outer stroke keeps the bright inner line readable on light maps.
         for box in boxes:
             context.set_line_width(4)
