@@ -755,6 +755,7 @@ elif IS_LINUX:
             return data.ljust(size, b"\x00")
 
         def _read_mem_file(self, address: int, size: int) -> bytes:
+            """Читает память через открытый proc-дескриптор и распознаёт завершение процесса."""
             if self._mem_fd is None:
                 self._mem_fd = os.open(f"/proc/{self.pid}/mem", os.O_RDONLY)
             try:
@@ -764,16 +765,22 @@ elif IS_LINUX:
             except OSError as exc:
                 if exc.errno in (errno.EPERM, errno.EACCES):
                     raise PermissionError(exc.errno, exc.strerror)
-                if exc.errno in (errno.ESRCH, errno.EINVAL, errno.EIO):
+                if exc.errno in (errno.EINVAL, errno.EIO):
                     return bytes(size)
                 raise
+            if size and not data:
+                raise OSError(errno.ESRCH, "process memory is no longer available")
             return data.ljust(size, b"\x00")
 
         def _read(self, address: int, size: int) -> bytes:
+            """Использует быстрый proc-дескриптор либо доступный системный способ чтения."""
             if not address:
                 return bytes(size)
             if not self.pid:
                 raise OSError(errno.ESRCH, "process is not open")
+
+            if self._mem_fd is not None:
+                return self._read_mem_file(address, size)
 
             if self._process_vm_readv is not None:
                 data = self._read_process_vm(address, size)
