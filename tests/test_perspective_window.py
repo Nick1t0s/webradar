@@ -12,6 +12,7 @@ import tkinter as tk
 from tkinter import ttk
 import unittest
 
+from websockets.exceptions import ConnectionClosed
 from websockets.sync.server import ServerConnection, serve
 
 from perspective.config import Settings
@@ -134,6 +135,72 @@ class WindowTests(unittest.TestCase):
                 window.close()
                 server.shutdown()
                 thread.join(timeout=2)
+
+
+    def test_settings_dialog_switches_source_and_clears_old_frame(self) -> None:
+        """Меняет источник через интерфейс и исключает кадры предыдущего helper."""
+        stopped = Event()
+        received: list[str] = []
+        def stream(connection: ServerConnection, name: str) -> None:
+            """Передаёт узнаваемые кадры и проверяет отсутствие команд от клиента."""
+            try:
+                while not stopped.is_set():
+                    connection.send(json.dumps({"m_players": [dict(player_data(), m_name=name)]}))
+                    try:
+                        received.append(str(connection.recv(timeout=0.03)))
+                    except TimeoutError:
+                        pass
+            except (OSError, ConnectionClosed):
+                pass
+        def first(connection: ServerConnection) -> None:
+            """Публикует данные первого источника."""
+            stream(connection, "First helper")
+        def second(connection: ServerConnection) -> None:
+            """Публикует данные второго источника."""
+            stream(connection, "Second helper")
+        with tempfile.TemporaryDirectory() as directory, serve(first, "127.0.0.1", 0) as one, serve(second, "127.0.0.1", 0) as two:
+            threads = [Thread(target=server.serve_forever, daemon=True) for server in (one, two)]
+            for thread in threads:
+                thread.start()
+            path = Path(directory) / "settings.json"
+            first_url = f"ws://127.0.0.1:{one.socket.getsockname()[1]}/cs2_webradar"
+            second_url = f"ws://127.0.0.1:{two.socket.getsockname()[1]}/cs2_webradar"
+            configured = replace(Settings.load(path), ws_url=first_url, width=1280, height=720)
+            root = tk.Tk()
+            window = PerspectiveWindow(root, configured, path)
+            def pump(duration: float = 0.3) -> None:
+                """Обрабатывает настоящие события Tk и входящие сетевые кадры."""
+                end = time.monotonic() + duration
+                while time.monotonic() < end:
+                    root.update()
+                    time.sleep(0.005)
+            try:
+                pump()
+                self.assertEqual(window.frame.players[0].name, "First helper")
+                window.open_settings()
+                pump(0.05)
+                dialog = next(widget for widget in root.winfo_children() if isinstance(widget, tk.Toplevel))
+                entry = next(widget for widget in dialog.winfo_children()
+                             if isinstance(widget, ttk.Entry) and widget.grid_info()["row"] == 0)
+                entry.delete(0, "end")
+                entry.insert(0, second_url)
+                button = next(widget for widget in dialog.winfo_children()
+                              if isinstance(widget, ttk.Button) and widget.cget("text") == "Применить")
+                button.invoke()
+                self.assertEqual(window.frame.players, ())
+                self.assertEqual(window.last_frame_at, 0)
+                self.assertIn(second_url, window.source.get())
+                self.assertEqual(Settings.load(path).ws_url, second_url)
+                pump(0.5)
+                self.assertEqual(window.frame.players[0].name, "Second helper")
+                self.assertEqual(received, [])
+            finally:
+                stopped.set()
+                window.close()
+                for server in (one, two):
+                    server.shutdown()
+                for thread in threads:
+                    thread.join(timeout=2)
 
 
 if __name__ == "__main__":
