@@ -18,6 +18,7 @@
     "mouse_device": "",
     "sensitivity": 1.0,
     "strength": 1.0,
-    "toggle_button": "BTN_SIDE"
+    "toggle_button": "BTN_SIDE",
+    "mode": "profile"
   }
 }

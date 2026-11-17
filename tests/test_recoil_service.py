@@ -163,6 +163,58 @@ class ServiceTests(unittest.TestCase):
                 mouse.assert_not_called()
                 connection.assert_not_called()
 
+    def test_feedback_stream_reports_missing_angles_then_compensates_both_axes(self) -> None:
+        """Принимает углы из настоящего WebSocket и не подменяет их временным профилем."""
+        stopped = Event()
+        source = TestMouse()
+        data: dict[str, object] = dict(player_data(), m_weapons={"m_active": "ak47"}, m_recoil=None)
+
+        def send(connection: ServerConnection) -> None:
+            """Передаёт сначала старый протокол, затем фактические углы тестовой отдачи."""
+            try:
+                while not stopped.wait(0.008):
+                    connection.send(json.dumps({"m_players": [data]}))
+            except ConnectionClosed:
+                pass
+
+        with tempfile.TemporaryDirectory() as directory, serve(send, "127.0.0.1", 0) as server:
+            path = Path(directory) / "settings.json"
+            configured = replace(settings(), ws_url=f"ws://127.0.0.1:{server.socket.getsockname()[1]}",
+                                 recoil=RecoilSettings(enabled=True, mouse_device="/dev/input/event999", mode="feedback"))
+            configured.save(path)
+            thread = Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            service = RecoilService(path)
+            with patch.dict(os.environ, {"XDG_RUNTIME_DIR": directory}), \
+                    patch("perspective.recoil_linux.LinuxMouse", return_value=source), \
+                    patch("perspective.recoil_linux.game_focused", return_value=True):
+                service.start()
+                try:
+                    self.wait_for(lambda: "пауза" in service.status)
+                    source.toggle = True
+                    self.wait_for(lambda: "helper не передаёт" in service.status)
+                    source.toggle = False
+                    self.assertEqual(source.moves, [])
+                    data["m_recoil"] = {"pitch": 0, "yaw": 0, "shots": 0}
+                    self.wait_for(lambda: "готово" in service.status)
+                    time.sleep(0.55)
+                    source.pressed = True
+                    time.sleep(0.03)
+                    data["m_recoil"] = {"pitch": -0.22, "yaw": -0.11, "shots": 1}
+                    self.wait_for(lambda: bool(source.moves))
+                    self.assertLess(source.moves[0][0], 0)
+                    self.assertGreater(source.moves[0][1], 0)
+                    data["m_recoil"] = None
+                    self.wait_for(lambda: "helper не передаёт" in service.status)
+                    count = len(source.moves)
+                    time.sleep(0.05)
+                    self.assertEqual(len(source.moves), count)
+                finally:
+                    service.stop()
+                    stopped.set()
+                    server.shutdown()
+                    thread.join(timeout=2)
+
     @unittest.skipUnless(os.access("/dev/uinput", os.W_OK), "Нужен доступ к /dev/uinput")
     def test_kernel_creates_and_destroys_virtual_mouse_without_moving_cursor(self) -> None:
         """Проверяет настоящий uinput ABI и освобождение устройства без движения указателя."""
@@ -207,6 +259,7 @@ class ServiceTests(unittest.TestCase):
                 combos = [child for child in controls if isinstance(child, ttk.Combobox)]
                 combos[0].current(0)
                 combos[1].set("Mouse5")
+                combos[2].set("По углу отдачи helper")
                 sensitivity = next(child for child in controls if isinstance(child, ttk.Entry) and not isinstance(child, ttk.Combobox))
                 sensitivity.delete(0, "end")
                 sensitivity.insert(0, "2.5")
@@ -218,5 +271,6 @@ class ServiceTests(unittest.TestCase):
                 self.assertEqual(saved.recoil.mouse_device, identity)
                 self.assertEqual(saved.recoil.sensitivity, 2.5)
                 self.assertEqual(saved.recoil.toggle_button, "BTN_EXTRA")
+                self.assertEqual(saved.recoil.mode, "feedback")
             finally:
                 root.destroy()

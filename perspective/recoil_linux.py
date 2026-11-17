@@ -19,7 +19,7 @@ from .config import Settings, SettingsError
 from .connection import RadarConnection
 from .hyprland import HyprlandError, query
 from .mouse_linux import LinuxMouse
-from .recoil import RecoilMotion
+from .recoil import RecoilFeedback, RecoilMotion
 from .scene import Frame, FrameError, object_fields
 
 
@@ -88,6 +88,7 @@ class RecoilSession:
         self.frame = Frame((), "")
         self.received_at = 0.0
         self.motion = RecoilMotion()
+        self.feedback = RecoilFeedback()
         self.armed = False
         try:
             self.toggle_down = self.mouse.buttons()[1]
@@ -119,13 +120,19 @@ class RecoilSession:
         context = (self.focused, weapon, player.identity if player is not None else "")
         if context != self.context:
             self.motion.reset()
+            self.feedback.reset()
             self.context = context
         if toggle and not self.toggle_down and self.focused:
             self.armed = not self.armed
             self.motion.reset()
+            self.feedback.reset()
         self.toggle_down = toggle
         permitted = self.settings.recoil.enabled and self.armed and self.focused and now >= self.ready_at
-        dx, dy = self.motion.advance(time.monotonic(), pressed, weapon, self.settings.recoil, permitted)
+        if self.settings.recoil.mode == "feedback":
+            dx, dy = self.feedback.advance(time.monotonic(), pressed, player.recoil if player is not None else None,
+                                           self.received_at, self.settings.recoil, permitted and bool(weapon))
+        else:
+            dx, dy = self.motion.advance(time.monotonic(), pressed, weapon, self.settings.recoil, permitted)
         self.mouse.move(dx, dy)
         button = "Mouse4" if self.settings.recoil.toggle_button == "BTN_SIDE" else "Mouse5"
         if not self.armed:
@@ -134,6 +141,10 @@ class RecoilSession:
             return f"Отдача: ожидание активной CS2 · {button} — пауза"
         if not weapon:
             return "Отдача: ожидание свежих данных локального игрока и оружия с профилем"
+        if self.settings.recoil.mode == "feedback" and (player is None or player.recoil is None):
+            return "Отдача: helper не передаёт угол отдачи; перезапустите обновлённый helper"
+        if self.settings.recoil.mode == "feedback" and pressed and not self.feedback.active:
+            return "Отдача: отпустите ЛКМ для начала новой очереди"
         return f"Отдача: {weapon} · {'компенсация' if dx or dy else 'готово'} · {button} — пауза"
 
     def close(self) -> None:

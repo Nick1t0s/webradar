@@ -38,6 +38,48 @@ class CameraOffsets:
     maxs: int
 
 
+class RecoilAngle(TypedDict):
+    pitch: float
+    yaw: float
+    shots: int
+
+
+class RecoilData(TypedDict):
+    m_recoil: RecoilAngle | None
+
+
+@dataclass(frozen=True)
+class RecoilOffsets:
+    """Хранит проверенные schema-offsets службы отдачи и счётчика выстрелов."""
+
+    services: int
+    predictable: int
+    unpredictable: int
+    shots: int
+
+
+def read_recoil(memory: MemoryReader, pawn: int, offsets: RecoilOffsets) -> RecoilData:
+    """Читает обе компоненты угла отдачи, не меняя память игры."""
+    result: RecoilData = {"m_recoil": None}
+    if not all((offsets.services, offsets.predictable, offsets.unpredictable, offsets.shots)):
+        return result
+    try:
+        shots = memory.u32(pawn + offsets.shots)
+        services = memory.ptr(pawn + offsets.services)
+        if not services or not 0 <= shots <= 1000:
+            return result
+        predictable = _vector(memory, services + offsets.predictable)
+        unpredictable = _vector(memory, services + offsets.unpredictable)
+        if predictable is None or unpredictable is None or shots != memory.u32(pawn + offsets.shots):
+            return result
+        pitch, yaw = predictable["x"] + unpredictable["x"], predictable["y"] + unpredictable["y"]
+        if abs(pitch) <= 45 and abs(yaw) <= 45:
+            result["m_recoil"] = {"pitch": pitch, "yaw": yaw, "shots": shots}
+    except (OSError, struct.error):
+        pass
+    return result
+
+
 def _vector(memory: MemoryReader, address: int) -> Position | None:
     x, y, z = (memory.f32(address + delta) for delta in (0, 4, 8))
     return {"x": x, "y": y, "z": z} if all(map(isfinite, (x, y, z))) else None

@@ -35,8 +35,9 @@ class RecoilSettings:
     enabled: Annotated[bool, Field(strict=True)] = False
     mouse_device: Annotated[str, Field(strict=True)] = ""
     sensitivity: Annotated[float, Field(strict=True, ge=0.05, le=20)] = 1.0
-    strength: Annotated[float, Field(strict=True, ge=0.1, le=2)] = 1.0
+    strength: Annotated[float, Field(strict=True, ge=0.1, le=10)] = 1.0
     toggle_button: Literal["BTN_SIDE", "BTN_EXTRA"] = "BTN_SIDE"
+    mode: Literal["profile", "feedback"] = "profile"
     profiles: dict[Annotated[str, Field(pattern=r"^[a-z][a-z0-9_]{0,47}$")],
                    Annotated[tuple[RecoilStep, ...], Field(min_length=1, max_length=100)]] = field(default_factory=initial_profiles)
 
@@ -53,12 +54,23 @@ class RecoilSettings:
             raise ValueError("Нужно от 1 до 64 профилей оружия")
         if any(sum(step.duration for step in profile) > 10 for profile in self.profiles.values()):
             raise ValueError("Профиль не должен превышать 10 секунд")
+        if self.mode == "feedback" and self.strength > 2:
+            raise ValueError("В режиме по углу отдачи сила должна быть от 0.1 до 2; начните с 1")
         return self
 
     @classmethod
     def parse(cls, raw: object) -> RecoilSettings:
         """Читает внешний объект без преобразования строк в числа и флаги."""
         return TypeAdapter(cls).validate_python(raw)
+
+
+@dataclass(frozen=True, config=ConfigDict(extra="forbid", allow_inf_nan=False))
+class RecoilSample:
+    """Проверяет суммарный угол отдачи и счётчик выстрелов локального игрока."""
+
+    pitch: Annotated[float, Field(strict=True, ge=-45, le=45)]
+    yaw: Annotated[float, Field(strict=True, ge=-45, le=45)]
+    shots: Annotated[int, Field(strict=True, ge=0, le=1000)]
 
 
 class RecoilMotion:
@@ -114,4 +126,65 @@ class RecoilMotion:
             self.reset()
             return 0, 0
         self.sent_x, self.sent_y = target_x, target_y
+        return dx, dy
+
+
+class RecoilFeedback:
+    """Компенсирует изменение угла отдачи, сохраняя ручное движение прицела."""
+
+    def __init__(self) -> None:
+        """Создаёт контроллер, ожидающий отпускания ЛКМ."""
+        self.released = False
+        self.active = False
+        self.previous: RecoilSample | None = None
+        self.sample_at = 0.0
+        self.tick_at = 0.0
+        self.target_x = self.target_y = 0.0
+        self.sent_x = self.sent_y = 0
+
+    def reset(self) -> None:
+        """Сбрасывает очередь и запрещает продолжение удерживаемой кнопки."""
+        self.released = self.active = False
+        self.previous = None
+        self.sample_at = self.tick_at = 0.0
+        self.target_x = self.target_y = 0.0
+        self.sent_x = self.sent_y = 0
+
+    def advance(self, now: float, pressed: bool, sample: RecoilSample | None,
+                sample_at: float, settings: RecoilSettings, permitted: bool) -> tuple[int, int]:
+        """Переводит новые углы в отсчёты мыши и плавно выдаёт ограниченные движения."""
+        if not pressed:
+            self.reset()
+            self.released = True
+            self.previous, self.sample_at = sample, sample_at
+            return 0, 0
+        if not permitted or sample is None:
+            self.reset()
+            return 0, 0
+        if not self.active:
+            if not self.released:
+                return 0, 0
+            self.active = True
+            self.tick_at = now
+        if not 0 <= now - self.tick_at <= 0.05 or sample_at < self.sample_at:
+            self.reset()
+            return 0, 0
+        self.tick_at = now
+        if sample_at > self.sample_at:
+            previous = self.previous
+            if sample.shots == 0 or (previous is not None and sample.shots < previous.shots):
+                self.target_x = self.target_y = 0.0
+                self.sent_x = self.sent_y = 0
+            elif previous is not None:
+                # Nominal CS2 m_yaw/m_pitch = 0.022; aim-punch scale = 2.
+                factor = 2 * settings.strength / (0.022 * settings.sensitivity)
+                self.target_x += (sample.yaw - previous.yaw) * factor
+                self.target_y -= (sample.pitch - previous.pitch) * factor
+            self.previous, self.sample_at = sample, sample_at
+        dx, dy = math.trunc(self.target_x) - self.sent_x, math.trunc(self.target_y) - self.sent_y
+        if abs(dx) > 1000 or abs(dy) > 1000:
+            self.reset()
+            return 0, 0
+        dx, dy = max(-80, min(80, dx)), max(-80, min(80, dy))
+        self.sent_x, self.sent_y = self.sent_x + dx, self.sent_y + dy
         return dx, dy

@@ -21,7 +21,7 @@ import urllib.request
 import webbrowser
 from pathlib import Path
 
-from camera_telemetry import CameraOffsets, read_camera
+from camera_telemetry import CameraOffsets, RecoilOffsets, read_camera, read_recoil
 
 from platform_utils import (
     IS_WINDOWS,
@@ -1422,6 +1422,17 @@ class CS2Reader:
             maxs=offset("CCollisionProperty", "m_vecMaxs"),
         )
 
+    def _recoil_offsets(self) -> RecoilOffsets:
+        """Выбирает offsets отдачи из действующей схемы игры."""
+        def offset(cls: str, field: str) -> int:
+            """Читает offset поля из действующей таблицы классов."""
+            return self._off(cls, field)
+
+        return RecoilOffsets(offset("C_CSPlayerPawn", "m_pAimPunchServices"),
+                             offset("CCSPlayer_AimPunchServices", "m_predictableBaseAngle"),
+                             offset("CCSPlayer_AimPunchServices", "m_unpredictableBaseAngle"),
+                             offset("C_CSPlayerPawn", "m_iShotsFired"))
+
     # ── scene origin ──────────────────────────────────────────────────────────
     def _origin(self, entity_ptr: int) -> tuple[float, float, float]:
         off_node   = self._off("C_BaseEntity", "m_pGameSceneNode")
@@ -1725,6 +1736,7 @@ class CS2Reader:
         off_armor    = self._off("C_CSPlayerPawn",       "m_ArmorValue")
         off_eye      = self._off("C_CSPlayerPawn",       "m_angEyeAngles")
         camera_offsets = self._camera_offsets()
+        recoil_offsets = self._recoil_offsets()
         off_isvc     = self._off("C_BasePlayerPawn",     "m_pItemServices")
         off_defuser  = self._off("CCSPlayer_ItemServices","m_bHasDefuser")
         off_helmet   = self._off("CCSPlayer_ItemServices","m_bHasHelmet")
@@ -1925,6 +1937,7 @@ class CS2Reader:
                     "m_position":   {"x": x, "y": y, "z": z},
                     "m_eye_angle":  eye_yaw,
                     **read_camera(self.mem, pawn, camera_offsets, (x, y, z)),
+                    **(read_recoil(self.mem, pawn, recoil_offsets) if ctrl == lpc else {}),
                     "m_has_helmet": has_helmet,
                     "m_has_defuser":has_defuser,
                     "m_weapons":    weapons,
@@ -2028,6 +2041,7 @@ class CS2Reader:
                             "m_position":   {"x": x, "y": y, "z": z},
                             "m_eye_angle":  eye_yaw,
                             **read_camera(self.mem, pawn, camera_offsets, (x, y, z)),
+                            **(read_recoil(self.mem, pawn, recoil_offsets) if ctrl == lpc else {}),
                             "m_has_helmet": has_helmet,
                             "m_has_defuser":has_defuser,
                             "m_weapons":    weapons,

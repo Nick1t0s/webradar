@@ -32,23 +32,29 @@ def open_recoil_settings(root: tk.Tk, settings: Settings, settings_path: Path,
     toggle = tk.StringVar(value="Mouse4" if configured.toggle_button == "BTN_SIDE" else "Mouse5")
     ttk.Label(dialog, text="Физическая мышь").grid(row=1, column=0, padx=10, sticky="w")
     ttk.Combobox(dialog, textvariable=mouse, values=tuple(choices), width=65).grid(row=1, column=1, padx=10, pady=5)
-    for row, label, variable in ((2, "Sensitivity в CS2", sensitivity), (3, "Сила компенсации (0.1–2)", strength)):
+    for row, label, variable in ((2, "Sensitivity в CS2", sensitivity), (3, "Сила: профили 0.1–10; по углу 0.1–2", strength)):
         ttk.Label(dialog, text=label).grid(row=row, column=0, padx=10, sticky="w")
         ttk.Entry(dialog, textvariable=variable).grid(row=row, column=1, padx=10, pady=5, sticky="ew")
     ttk.Label(dialog, text="Кнопка включения / паузы").grid(row=4, column=0, padx=10, sticky="w")
     ttk.Combobox(dialog, textvariable=toggle, values=("Mouse4", "Mouse5"), state="readonly").grid(
         row=4, column=1, padx=10, pady=5, sticky="ew")
-    ttk.Label(dialog, text="Профили оружия (JSON)").grid(row=5, column=0, columnspan=2, padx=10, pady=5, sticky="w")
+    mode = tk.StringVar(value="По углу отдачи helper" if configured.mode == "feedback" else "Профили")
+    ttk.Label(dialog, text="Способ компенсации").grid(row=5, column=0, padx=10, sticky="w")
+    ttk.Combobox(dialog, textvariable=mode, values=("Профили", "По углу отдачи helper"), state="readonly").grid(
+        row=5, column=1, padx=10, pady=5, sticky="ew")
+    ttk.Label(dialog, text="Профили оружия (JSON); в режиме по углу используется только список оружий").grid(
+        row=6, column=0, columnspan=2, padx=10, pady=5, sticky="w")
     editor = tk.Text(dialog, height=12, width=85, wrap="none")
-    editor.grid(row=6, column=0, columnspan=2, padx=10, sticky="nsew")
+    editor.grid(row=7, column=0, columnspan=2, padx=10, sticky="nsew")
     editor.insert("1.0", json.dumps(asdict(configured)["profiles"], indent=2))
     ttk.Label(dialog, text=("Mouse4/Mouse5 переключает компенсацию только в активной CS2. Затем удерживайте ЛКМ.\n"
                            "duration — секунды, x/y — отсчёты мыши в секунду при sensitivity=1; y>0 — вниз.\n"
+                           "По углу: обе оси по данным helper, начните с силы 1; нужен обновлённый helper.\n"
                            "Начальные профили — приблизительная вертикальная компенсация, нужна калибровка.\n"
                            "Нужен локальный helper. Чужой игрок, нож и гранаты не включают компенсацию.\n"
                            "После потери фокуса/связи отпустите ЛКМ. Боковая кнопка также поступает в игру."),
-              wraplength=750).grid(row=7, column=0, columnspan=2, padx=10, pady=8, sticky="w")
-    dialog.rowconfigure(6, weight=1)
+              wraplength=750).grid(row=8, column=0, columnspan=2, padx=10, pady=8, sticky="w")
+    dialog.rowconfigure(7, weight=1)
     dialog.columnconfigure(1, weight=1)
 
     def apply() -> None:
@@ -60,6 +66,7 @@ def open_recoil_settings(root: tk.Tk, settings: Settings, settings_path: Path,
                 "sensitivity": float(sensitivity.get().replace(",", ".")),
                 "strength": float(strength.get().replace(",", ".")),
                 "toggle_button": "BTN_SIDE" if toggle.get() == "Mouse4" else "BTN_EXTRA", "profiles": raw,
+                "mode": "feedback" if mode.get() == "По углу отдачи helper" else "profile",
             })
             # Re-read to preserve camera changes made in another settings dialog.
             updated = replace(Settings.load(settings_path), recoil=recoil)
@@ -70,4 +77,4 @@ def open_recoil_settings(root: tk.Tk, settings: Settings, settings_path: Path,
             return
         dialog.destroy()
 
-    ttk.Button(dialog, text="Применить", command=apply).grid(row=8, column=1, padx=10, pady=10, sticky="e")
+    ttk.Button(dialog, text="Применить", command=apply).grid(row=9, column=1, padx=10, pady=10, sticky="e")
