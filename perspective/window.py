@@ -43,8 +43,13 @@ class PerspectiveWindow:
         ttk.Button(toolbar, text="Размер × масштаб", command=self.resize).pack(side="left", padx=(6, 0))
         self.overlay_button = ttk.Button(root, text="Включить оверлей поверх CS2", command=self._toggle_overlay)
         self.overlay_button.pack(fill="x", padx=6)
-        if not sys.platform.startswith("linux"):
+        if not (sys.platform.startswith("linux") or sys.platform == "win32"):
             self.overlay_button.configure(state="disabled")
+        self.source = tk.StringVar(value=f"Источник данных: {settings.ws_url}")
+        source_bar = ttk.Frame(root, padding=(6, 3))
+        source_bar.pack(fill="x")
+        ttk.Label(source_bar, textvariable=self.source, wraplength=900).pack(side="left", fill="x", expand=True)
+        ttk.Button(source_bar, text="Подключение…", command=self.open_settings).pack(side="right")
         self.status = tk.StringVar()
         ttk.Label(root, textvariable=self.status, padding=5, wraplength=1100).pack(side="bottom", fill="x")
         self.canvas = tk.Canvas(root, background="black", highlightthickness=0)
@@ -203,13 +208,31 @@ class PerspectiveWindow:
         suffix = f" · {', '.join(missing)}" if missing else ""
         self.status.set(f"{player.name} · {game_width}×{game_height} · FOV {fov:g}° ({source}) · ×{self.settings.scale:g}{suffix}")
 
+    def _apply_settings(self, updated: Settings) -> None:
+        """Применяет настройки и очищает старую сцену при смене источника."""
+        old_url = self.settings.ws_url
+        self.settings = updated
+        self.source.set(f"Источник данных: {updated.ws_url}")
+        if old_url != updated.ws_url:
+            self.connection.stop()
+            self.frame = Frame((), "")
+            self.last_frame_at = 0.0
+            self.connection_status = "Подключение к helper…"
+            self.connection = RadarConnection(updated.ws_url)
+            self.connection.start()
+            self._update_players()
+        self._load_video()
+        self.resize()
+        self.draw()
+
     def open_settings(self) -> None:
+        """Открывает параметры источника данных и камеры."""
         dialog = tk.Toplevel(self.root)
-        dialog.title("Параметры камеры")
+        dialog.title("Источник данных и параметры камеры")
         dialog.transient(self.root)
         dialog.grab_set()
         entries: dict[str, tk.StringVar] = {}
-        fields = (("ws_url", "WebSocket helper", self.settings.ws_url),
+        fields = (("ws_url", "Источник данных (WebSocket helper)", self.settings.ws_url),
                   ("cfg_dir", "Папка cfg CS2 (пусто = поиск)", self.settings.cfg_dir),
                   ("width", "Ширина CS2 (пусто = из cfg)", self.settings.width),
                   ("height", "Высота CS2 (пусто = из cfg)", self.settings.height),
@@ -242,7 +265,7 @@ class PerspectiveWindow:
         stretch = tk.BooleanVar(value=self.settings.overlay_stretch)
         ttk.Checkbutton(dialog, text="Оверлей: CS2 растягивает картинку на всё окно (без полос)", variable=stretch).grid(
             row=len(fields), column=0, columnspan=3, padx=10, pady=5, sticky="w")
-        ttk.Label(dialog, text=f"Источник: {self.video.source}\nFOV cfg может отличаться от действующего FOV. viewmodel_fov не используется.\nМасштаб действует на отдельное окно; оверлей совмещается с полной игровой областью.",
+        ttk.Label(dialog, text=f"Адрес источника: ws://КОМПЬЮТЕР:22006/cs2_webradar (HTTP сайта — отдельно, 5173).\nНастройка действует и для оверлея поверх CS2.\nИсточник камеры: {self.video.source}\nFOV cfg может отличаться от действующего FOV. viewmodel_fov не используется.\nМасштаб действует на отдельное окно; оверлей совмещается с полной игровой областью.",
                   wraplength=680).grid(row=len(fields) + 1, column=0, columnspan=3, padx=10, pady=10, sticky="w")
         def apply() -> None:
             raw: dict[str, object] = {key: variable.get().strip() for key, variable in entries.items()}
@@ -258,19 +281,8 @@ class PerspectiveWindow:
             except (ValueError, OSError) as exc:
                 messagebox.showerror("Не удалось применить настройки", str(exc), parent=dialog)
                 return
-            old_url = self.settings.ws_url
-            self.settings = updated
-            if old_url != updated.ws_url:
-                self.connection.stop()
-                self.frame = Frame((), "")
-                self.connection_status = "Подключение к helper…"
-                self.connection = RadarConnection(updated.ws_url)
-                self.connection.start()
-                self._update_players()
-            self._load_video()
-            self.resize()
+            self._apply_settings(updated)
             dialog.destroy()
-            self.draw()
         ttk.Button(dialog, text="Применить", command=apply).grid(row=len(fields) + 2, column=1, pady=12)
 
     def close(self) -> None:

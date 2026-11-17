@@ -62,6 +62,7 @@ const MoveButton = () => {
 };
 
 export const Latency = ({ value, settings, setSettings,
+  connection, // eslint-disable-line react/prop-types
   viewer, // eslint-disable-line react/prop-types
 }) => {
   return (
@@ -72,7 +73,7 @@ export const Latency = ({ value, settings, setSettings,
       </div>
 
       <MoveButton />
-      <SettingsButton settings={settings} onSettingsChange={setSettings} viewer={viewer} />
+      <SettingsButton settings={settings} onSettingsChange={setSettings} viewer={viewer} connection={connection} />
     </div>
   );
 };

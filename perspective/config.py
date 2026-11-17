@@ -16,6 +16,20 @@ class SettingsError(ValueError):
     """Viewer or game settings cannot be used for a camera."""
 
 
+def validate_ws_url(url: str) -> None:
+    """Проверяет адрес источника данных до открытия сетевого соединения."""
+    if not isinstance(url, str) or not url or any(char.isspace() for char in url):
+        raise SettingsError("Адрес источника данных не должен быть пустым или содержать пробелы")
+    try:
+        parsed = urlsplit(url)
+        port = parsed.port
+    except ValueError as exc:
+        raise SettingsError("Некорректный адрес или порт источника данных") from exc
+    if (parsed.scheme not in ("ws", "wss") or not parsed.hostname or
+            parsed.username is not None or parsed.password is not None or parsed.fragment or port == 0):
+        raise SettingsError("Нужен ws:// или wss:// адрес helper с корректным портом, без пароля и фрагмента")
+
+
 @dataclass(frozen=True)
 class Settings:
     ws_url: str
@@ -31,6 +45,10 @@ class Settings:
     overlay_stretch: bool = False
     teammate_color: str = "#4ade80"
     enemy_color: str = "#ef4444"
+
+    def __post_init__(self) -> None:
+        """Проверяет источник данных при любом способе создания настроек."""
+        validate_ws_url(self.ws_url)
 
     @classmethod
     def load(cls, path: Path) -> Settings:
@@ -55,9 +73,6 @@ class Settings:
             url, cfg, player = fields["ws_url"], fields["cfg_dir"], fields["player"]
             if not isinstance(url, str) or not isinstance(player, str) or not player:
                 raise SettingsError("Неверный адрес helper или игрок")
-            parsed = urlsplit(url)
-            if parsed.scheme not in ("ws", "wss") or not parsed.hostname or parsed.username or parsed.password:
-                raise SettingsError("Нужен ws:// или wss:// адрес без пароля")
             if cfg is not None and not isinstance(cfg, str):
                 raise SettingsError("cfg_dir: путь к папке cfg или null")
             dimensions: list[int | None] = []

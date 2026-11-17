@@ -1,3 +1,4 @@
+import ConnectionSettings from "./ConnectionSettings";
 import MapRotationControl from "./MapRotationControl";
 import PlayerColorSettings from "./PlayerColorSettings";
 import ViewerSelector from "./ViewerSelector";
@@ -26,6 +27,7 @@ const Toggle = ({ checked, onToggle, label }) => (
 );
 
 const SettingsButton = ({ settings, onSettingsChange,
+  connection, // eslint-disable-line react/prop-types
   viewer, // eslint-disable-line react/prop-types
 }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -48,6 +50,7 @@ const SettingsButton = ({ settings, onSettingsChange,
         >
           <h3 className="text-radar-primary text-lg font-semibold mb-4">Radar Settings</h3>
 
+          <ConnectionSettings connection={connection} />
           {/* eslint-disable-next-line react/prop-types */}
           <div key={viewer.id} className="space-y-3">
             <ViewerSelector viewer={viewer} />

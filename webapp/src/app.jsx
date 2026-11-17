@@ -11,12 +11,14 @@ import { getLatency, Latency } from "./components/latency";
 import MaskedIcon from "./components/maskedicon";
 import EspOverlay from "./components/EspOverlay";
 import ColorField from "./components/ColorField";
+import ConnectionSettings from "./components/ConnectionSettings";
+import { useConnectionPreferences } from "./hooks/useConnectionPreferences";
 import StatusPill from "./components/StatusPill";
 import ViewerSelector from "./components/ViewerSelector";
 import ViewRayControl from "./components/ViewRayControl";
 import { useViewerPreferences } from "./hooks/useViewerPreferences";
 import { getViewerPerspective } from "./utilities/viewerPerspective";
-import { getWebSocketUrl } from "./utilities/websocketUrl";
+import { getDefaultConnection } from "./utilities/connectionPreferences";
 import { getLocalTeam } from "./utilities/utilities";
 
 /* change this to '1' if you want to use offline (your own pc only) */
@@ -123,6 +125,7 @@ const MOLLY_PRESETS = ["#ff6a00","#ffb000","#ff2d2d","#ff3df0","#a3ff00"];
 
 const OverlaySettingsPopup = ({ settings, setSettings, onClose,
   viewer, // eslint-disable-line react/prop-types
+  connection, // eslint-disable-line react/prop-types
 }) => {
   const toggle = (key) => setSettings(s => ({ ...s, [key]: !s[key] }));
   const setVal  = (key, val) => setSettings(s => ({ ...s, [key]: val }));
@@ -142,6 +145,7 @@ const OverlaySettingsPopup = ({ settings, setSettings, onClose,
         <span onClick={onClose} style={{ color:"#f55", cursor:"pointer", fontSize:18, lineHeight:1, padding:"0 2px" }}>×</span>
       </div>
 
+      <ConnectionSettings connection={connection} />
       <ViewerSelector viewer={viewer} />
       <MapRotationControl settings={settings} onChange={value => setVal("mapRotation", value)}
         onFollowViewChange={value => setVal("followView", value)} />
@@ -329,6 +333,10 @@ const DragBar = ({ bombData, onSettingsClick }) => {
 };
 
 const App = () => {
+  const connection = useConnectionPreferences(getDefaultConnection(window.location, {
+    override: NGROK_WS_URL, useLocalhost: !!USE_LOCALHOST,
+  }));
+  const wsUrl = connection.url;
   const [averageLatency, setAverageLatency] = useState(0);
   const [playerArray, setPlayerArray] = useState([]);
   const [mapData, setMapData] = useState();
@@ -357,9 +365,23 @@ const App = () => {
   const [status, setStatus] = useState({ state: "connecting", detail: "Connecting to the radar helper" });
 
   useEffect(() => {
-    const wsUrl = getWebSocketUrl(window.location, {
-      override: NGROK_WS_URL, useLocalhost: !!USE_LOCALHOST,
-    });
+    setStatus({ state: "connecting", detail: `Connecting to ${wsUrl}` });
+    setPlayerArray([]);
+    setLocalTeam(undefined);
+    setBombData(null);
+    setGrenades([]);
+    setDropped([]);
+    setViewMatrix([]);
+    setMapData(undefined);
+    lastMapRef.current = null;
+    setServerAddr(null);
+    setTailscaleAddr(null);
+    setFunnelAddr(null);
+    setAverageLatency(0);
+    setKbps(0);
+    _bytesThisSec = 0;
+    _kbpsSnapshot = 0;
+    if (!IS_OVERLAY) document.body.style.backgroundImage = "none";
 
     let ws = null;
     let retryTimer = null;
@@ -380,7 +402,13 @@ const App = () => {
         console.info("WS connected →", wsUrl);
       };
 
-      ws.onclose = () => {
+      ws.onclose = event => {
+        if (!alive || event.target !== ws) return;
+        setPlayerArray([]);
+        setBombData(null);
+        setGrenades([]);
+        setDropped([]);
+        setViewMatrix([]);
         console.warn("WS closed — retrying in 3 s");
         setStatus({ state: "no_helper", detail: "Radar helper not running (reconnecting automatically)" });
         if (alive) retryTimer = setTimeout(connect, 3000);
@@ -389,8 +417,10 @@ const App = () => {
       ws.onerror = (e) => console.error("WS error", e);
 
       ws.onmessage = async (event) => {
+        if (!alive || event.target !== ws) return;
         setAverageLatency(getLatency());
         const raw = typeof event.data === "string" ? event.data : await event.data.text();
+        if (!alive || event.target !== ws) return;
         const parsedData = JSON.parse(raw);
 
         // Standalone status update: sent while the helper has no game data.
@@ -431,7 +461,9 @@ const App = () => {
           try {
             const res = await fetch(`data/${map}/data.json`);
             if (res.ok) {
-              setMapData({ ...(await res.json()), name: map });
+              const data = await res.json();
+              if (!alive || event.target !== ws || lastMapRef.current !== map) return;
+              setMapData({ ...data, name: map });
               document.body.style.backgroundImage = IS_OVERLAY
                 ? "none"
                 : `url(./data/${map}/background.webp), url(./data/${map}/background.png)`;
@@ -449,9 +481,10 @@ const App = () => {
     return () => {
       alive = false;
       clearTimeout(retryTimer);
+      if (_backendWs === ws) _backendWs = null;
       ws?.close();
     };
-  }, []);
+  }, [wsUrl]);
 
 
 
@@ -502,6 +535,7 @@ const App = () => {
             settings={settings}
             setSettings={setSettings}
             viewer={viewer}
+            connection={connection}
             onClose={() => setSettingsOpen(false)}
           />
         )}
@@ -582,6 +616,7 @@ const App = () => {
           settings={settings}
           setSettings={setSettings}
           viewer={viewer}
+          connection={connection}
         />
         {perspective.missing && playerArray.length > 0 && (
           <p className="viewer-missing" role="status">Selected player is not in this match. Choose Your Player in Settings.</p>
