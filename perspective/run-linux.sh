@@ -9,4 +9,4 @@ elif [ -x "$REPO_DIR/helper/linux/.venv/bin/python" ]; then
 else
     PYTHON_BIN=python3
 fi
-exec "$PYTHON_BIN" -m perspective
+exec "$PYTHON_BIN" -m perspective "$@"

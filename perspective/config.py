@@ -9,7 +9,7 @@ import re
 import sys
 from urllib.parse import urlsplit
 
-from .scene import FrameError, number, object_fields
+from .scene import FrameError, Player, number, object_fields
 
 
 class SettingsError(ValueError):
@@ -28,6 +28,9 @@ class Settings:
     eye_height: float
     body_width: float
     body_height: float
+    overlay_stretch: bool = False
+    teammate_color: str = "#4ade80"
+    enemy_color: str = "#ef4444"
 
     @classmethod
     def load(cls, path: Path) -> Settings:
@@ -43,6 +46,10 @@ class Settings:
     def parse(cls, raw: object) -> Settings:
         try:
             fields = object_fields(raw)
+            # Existing perspective preferences predate the overlay display mode.
+            fields.setdefault("overlay_stretch", False)
+            fields.setdefault("teammate_color", "#4ade80")
+            fields.setdefault("enemy_color", "#ef4444")
             if set(fields) != set(cls.__dataclass_fields__):
                 raise SettingsError("Нужны все поля из config.example.json; неизвестные поля запрещены")
             url, cfg, player = fields["ws_url"], fields["cfg_dir"], fields["player"]
@@ -69,7 +76,17 @@ class Settings:
             eye, width, height = (number(fields[k]) for k in ("eye_height", "body_width", "body_height"))
             if not 0.1 <= scale <= 2 or not all(1 <= v <= 128 for v in (eye, width, height)):
                 raise SettingsError("Масштаб: 0.1–2; размеры тела и высота глаз: 1–128")
-            return cls(url, cfg, player, dimensions[0], dimensions[1], fov, scale, eye, width, height)
+            stretch = fields["overlay_stretch"]
+            if not isinstance(stretch, bool):
+                raise SettingsError("overlay_stretch: нужно true или false")
+            colors: list[str] = []
+            for key in ("teammate_color", "enemy_color"):
+                color = fields[key]
+                if not isinstance(color, str) or not re.fullmatch(r"#[0-9a-fA-F]{6}", color):
+                    raise SettingsError(f"{key}: нужен цвет #RRGGBB")
+                colors.append(color.lower())
+            return cls(url, cfg, player, dimensions[0], dimensions[1], fov, scale, eye, width, height, stretch,
+                       colors[0], colors[1])
         except (FrameError, KeyError, ValueError) as exc:
             raise SettingsError(str(exc)) from exc
 
@@ -77,6 +94,9 @@ class Settings:
         temporary = path.with_suffix(".tmp")
         temporary.write_text(json.dumps(asdict(self), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         temporary.replace(path)
+
+    def player_color(self, player: Player, viewer: Player) -> str:
+        return self.teammate_color if viewer.team in (2, 3) and player.team == viewer.team else self.enemy_color
 
 
 def discover_cfg_dirs() -> tuple[Path, ...]:
@@ -126,6 +146,16 @@ class GameVideo:
     height: int | None
     fov: float | None
     source: str
+
+    @classmethod
+    def for_player(cls, settings: Settings, player: Player | None, profiles: tuple[Path, ...]) -> GameVideo:
+        directory = Path(settings.cfg_dir).expanduser() if settings.cfg_dir else None
+        if directory is None and player and player.identity.startswith("steam:"):
+            account = str(int(player.identity.removeprefix("steam:")) - 76561197960265728)
+            directory = next((path for path in profiles if path.parents[2].name == account), None)
+        if directory is None and not settings.cfg_dir and len(profiles) == 1:
+            directory = profiles[0]
+        return cls.read(directory)
 
     @classmethod
     def read(cls, directory: Path | None) -> GameVideo:

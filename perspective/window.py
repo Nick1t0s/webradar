@@ -1,11 +1,14 @@
-"""Tk window: white 3D view, crosshair, and aspect-preserving black bars."""
+"""Tk window: colored player boxes and an aspect-preserving white viewport."""
 from __future__ import annotations
 
 from dataclasses import replace
 from pathlib import Path
+from functools import partial
+import subprocess
+import sys
 import time
 import tkinter as tk
-from tkinter import filedialog, messagebox, ttk
+from tkinter import colorchooser, filedialog, messagebox, ttk
 
 from .config import GameVideo, Settings, SettingsError, discover_cfg_dirs
 from .connection import RadarConnection
@@ -21,6 +24,8 @@ class PerspectiveWindow:
         self.profiles = discover_cfg_dirs()
         self.video = GameVideo.read(None)
         self.profile_key = ""
+        self.overlay: subprocess.Popen[bytes] | None = None
+        self.overlay_log = Path(__file__).with_name(".runtime") / "overlay.log"
         self.labels: dict[str, str] = {"Главный игрок helper": "helper"}
         self.connection = RadarConnection(settings.ws_url)
         self.connection.start()
@@ -36,6 +41,10 @@ class PerspectiveWindow:
         self.selector.bind("<<ComboboxSelected>>", self._select_player)
         ttk.Button(toolbar, text="Настройки", command=self.open_settings).pack(side="left")
         ttk.Button(toolbar, text="Размер × масштаб", command=self.resize).pack(side="left", padx=(6, 0))
+        self.overlay_button = ttk.Button(root, text="Включить оверлей поверх CS2", command=self._toggle_overlay)
+        self.overlay_button.pack(fill="x", padx=6)
+        if not sys.platform.startswith("linux"):
+            self.overlay_button.configure(state="disabled")
         self.status = tk.StringVar()
         ttk.Label(root, textvariable=self.status, padding=5, wraplength=1100).pack(side="bottom", fill="x")
         self.canvas = tk.Canvas(root, background="black", highlightthickness=0)
@@ -44,7 +53,7 @@ class PerspectiveWindow:
         self._update_players()
         self._load_video()
         self.resize()
-        self.timer = root.after(33, self._tick)
+        self.timer = root.after(8, self._tick)
 
     def _on_configure(self, event: tk.Event[tk.Canvas]) -> None:
         self.draw()
@@ -72,18 +81,39 @@ class PerspectiveWindow:
             self.selected.set(next(label for label, identity in labels.items() if identity == self.settings.player))
 
     def _load_video(self) -> None:
-        directory = Path(self.settings.cfg_dir).expanduser() if self.settings.cfg_dir else None
         player = self.frame.selected(self.settings.player)
-        if directory is None and player and player.identity.startswith("steam:"):
-            account = str(int(player.identity.removeprefix("steam:")) - 76561197960265728)
-            directory = next((path for path in self.profiles if path.parents[2].name == account), None)
-        if directory is None and not self.settings.cfg_dir and len(self.profiles) == 1:
-            directory = self.profiles[0]
         try:
-            self.video = GameVideo.read(directory)
+            self.video = GameVideo.for_player(self.settings, player, self.profiles)
         except OSError as exc:
             self.video = GameVideo(None, None, None, f"Не удалось прочитать cfg: {exc}")
         self.profile_key = player.identity if player else ""
+
+    def _stop_overlay(self) -> None:
+        if self.overlay is not None:
+            if self.overlay.poll() is None:
+                self.overlay.terminate()
+                try:
+                    self.overlay.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    self.overlay.kill()
+                    self.overlay.wait()
+            self.overlay = None
+        self.overlay_button.configure(text="Включить оверлей поверх CS2")
+
+    def _toggle_overlay(self) -> None:
+        if self.overlay is not None and self.overlay.poll() is None:
+            self._stop_overlay()
+            return
+        try:
+            self.settings.save(self.settings_path)
+            self.overlay_log.parent.mkdir(exist_ok=True)
+            with self.overlay_log.open("wb") as log:
+                self.overlay = subprocess.Popen([sys.executable, "-m", "perspective", "--overlay"],
+                                                cwd=Path(__file__).resolve().parent.parent,
+                                                stdout=subprocess.DEVNULL, stderr=log)
+            self.overlay_button.configure(text="Выключить оверлей")
+        except OSError as exc:
+            messagebox.showerror("Оверлей не запущен", str(exc), parent=self.root)
 
     def resize(self) -> None:
         try:
@@ -95,6 +125,15 @@ class PerspectiveWindow:
         self.root.geometry(f"{round(width * self.settings.scale)}x{round(height * self.settings.scale) + chrome}")
 
     def _tick(self) -> None:
+        if self.overlay is not None and self.overlay.poll() is not None:
+            code = self.overlay.returncode
+            self._stop_overlay()
+            if code:
+                try:
+                    detail = self.overlay_log.read_text(encoding="utf-8", errors="replace")[-1000:]
+                except OSError:
+                    detail = f"Код завершения: {code}"
+                messagebox.showerror("Оверлей завершился", detail, parent=self.root)
         update = self.connection.latest()
         if update is not None:
             self.frame = update.frame or Frame((), "")
@@ -107,8 +146,9 @@ class PerspectiveWindow:
                 self._load_video()
                 if previous_size != (self.video.width, self.video.height):
                     self.resize()
-        self.draw()
-        self.timer = self.root.after(33, self._tick)
+        if update is not None or (self.frame.players and time.monotonic() - self.last_frame_at > 2):
+            self.draw()
+        self.timer = self.root.after(8, self._tick)
 
     def draw(self) -> None:
         canvas = self.canvas
@@ -126,8 +166,6 @@ class PerspectiveWindow:
         left, top, view_width, view_height = fit_viewport(width, height, aspect, game_width * self.settings.scale)
         canvas.create_rectangle(left, top, left + view_width, top + view_height, fill="white", outline="", tags="scene")
         # All content is clipped to the same viewport; bars remain black under tiling.
-        canvas.create_line(width / 2 - 7, height / 2, width / 2 + 7, height / 2, fill="black", tags="scene")
-        canvas.create_line(width / 2, height / 2 - 7, width / 2, height / 2 + 7, fill="black", tags="scene")
         player = self.frame.selected(self.settings.player)
         if self.connection_status:
             self.status.set(self.connection_status)
@@ -151,7 +189,7 @@ class PerspectiveWindow:
             if other.identity == player.identity or other.dead:
                 continue
             for a, b in camera.box(other, width, height, self.settings.body_width, self.settings.body_height):
-                canvas.create_line(*a, *b, fill="black", width=2, tags="scene")
+                canvas.create_line(*a, *b, fill=self.settings.player_color(other, player), width=2, tags="scene")
         source = "вручную" if self.settings.fov is not None else "helper" if player.fov else "сохранённый cfg"
         missing = []
         if player.eye is None:
@@ -175,7 +213,13 @@ class PerspectiveWindow:
                   ("scale", "Множитель размера окна", self.settings.scale),
                   ("eye_height", "Высота глаз без данных helper", self.settings.eye_height),
                   ("body_width", "Ширина тела без данных helper", self.settings.body_width),
-                  ("body_height", "Высота тела без данных helper", self.settings.body_height))
+                  ("body_height", "Высота тела без данных helper", self.settings.body_height),
+                  ("teammate_color", "Цвет союзников", self.settings.teammate_color),
+                  ("enemy_color", "Цвет врагов", self.settings.enemy_color))
+        def choose_color(variable: tk.StringVar) -> None:
+            _, color = colorchooser.askcolor(color=variable.get(), parent=dialog, title="Цвет рамок")
+            if color is not None:
+                variable.set(color)
         for row, (key, label, value) in enumerate(fields):
             ttk.Label(dialog, text=label).grid(row=row, column=0, sticky="w", padx=10, pady=5)
             variable = tk.StringVar(value="" if value is None else str(value))
@@ -184,16 +228,22 @@ class PerspectiveWindow:
                 ttk.Combobox(dialog, textvariable=variable, values=tuple(map(str, self.profiles)), width=48).grid(row=row, column=1, padx=10)
             else:
                 ttk.Entry(dialog, textvariable=variable, width=50).grid(row=row, column=1, padx=10)
+            if key in ("teammate_color", "enemy_color"):
+                ttk.Button(dialog, text="Выбрать цвет…", command=partial(choose_color, variable)).grid(row=row, column=2, padx=5)
         def browse() -> None:
             directory = filedialog.askdirectory(parent=dialog, title="Выберите 730/local/cfg с cs2_video.txt")
             if directory:
                 entries["cfg_dir"].set(directory)
         ttk.Button(dialog, text="Выбрать папку…", command=browse).grid(row=1, column=2, padx=5)
-        ttk.Label(dialog, text=f"Источник: {self.video.source}\nFOV cfg может отличаться от действующего FOV. viewmodel_fov не используется.\nПропорции берутся из разрешения CS2. При растяжении окна появляются чёрные полосы.",
-                  wraplength=680).grid(row=len(fields), column=0, columnspan=3, padx=10, pady=10, sticky="w")
+        stretch = tk.BooleanVar(value=self.settings.overlay_stretch)
+        ttk.Checkbutton(dialog, text="Оверлей: CS2 растягивает картинку на всё окно (без полос)", variable=stretch).grid(
+            row=len(fields), column=0, columnspan=3, padx=10, pady=5, sticky="w")
+        ttk.Label(dialog, text=f"Источник: {self.video.source}\nFOV cfg может отличаться от действующего FOV. viewmodel_fov не используется.\nМасштаб действует на отдельное окно; оверлей совмещается с полной игровой областью.",
+                  wraplength=680).grid(row=len(fields) + 1, column=0, columnspan=3, padx=10, pady=10, sticky="w")
         def apply() -> None:
             raw: dict[str, object] = {key: variable.get().strip() for key, variable in entries.items()}
             raw["player"] = self.settings.player
+            raw["overlay_stretch"] = stretch.get()
             try:
                 for key in ("width", "height", "fov", "scale", "eye_height", "body_width", "body_height"):
                     text = entries[key].get().strip().replace(",", ".")
@@ -217,9 +267,10 @@ class PerspectiveWindow:
             self.resize()
             dialog.destroy()
             self.draw()
-        ttk.Button(dialog, text="Применить", command=apply).grid(row=len(fields) + 1, column=1, pady=12)
+        ttk.Button(dialog, text="Применить", command=apply).grid(row=len(fields) + 2, column=1, pady=12)
 
     def close(self) -> None:
         self.root.after_cancel(self.timer)
+        self._stop_overlay()
         self.connection.stop()
         self.root.destroy()

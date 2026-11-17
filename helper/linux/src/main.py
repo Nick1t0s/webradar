@@ -362,7 +362,7 @@ def _setup_tailscale(cfg: dict) -> str | None:
 
 _FUNNEL_URL: str | None = None   # assigned in __main__ after _setup_tailscale()
 
-POLL_INTERVAL = 0.033  # ~30 Hz
+POLL_INTERVAL = 1 / 60  # target period, including collection and broadcast time
 CACHE_MAX_AGE = 3600
 DUMPER_BASE   = "https://raw.githubusercontent.com/a2x/cs2-dumper/main/output"
 
@@ -4790,9 +4790,10 @@ async def _run_async():
                     continue
                 _setup_failures = 0
                 reader = r
-                log.info("reader ready — watching entity list at 10 Hz")
+                log.info("reader ready — targeting 60 Hz including collection time")
 
             # ── collect + broadcast ───────────────────────────────────────────
+            frame_started = time.monotonic()
             try:
                 data = await loop.run_in_executor(None, reader.collect)
                 if data is None:
@@ -4832,7 +4833,7 @@ async def _run_async():
             except Exception as exc:
                 log.error("unexpected error in collect/send: %s", exc, exc_info=True)
 
-            await asyncio.sleep(POLL_INTERVAL)
+            await asyncio.sleep(max(0.0, POLL_INTERVAL - (time.monotonic() - frame_started)))
 
 
 def run(overlay: bool = False, esp: bool = False):

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from collections.abc import Callable
 from queue import Empty, Full, Queue
 from threading import Event, Thread
 import time
@@ -20,8 +21,9 @@ class Update:
 
 
 class RadarConnection:
-    def __init__(self, url: str) -> None:
+    def __init__(self, url: str, on_update: Callable[[], None] | None = None) -> None:
         self.url = url
+        self.on_update = on_update
         self.stopped = Event()
         self.updates: Queue[Update] = Queue(maxsize=1)
         self.thread = Thread(target=self._run, daemon=True, name="perspective-websocket")
@@ -46,11 +48,15 @@ class RadarConnection:
         except Full:
             self.latest()
             self.updates.put_nowait(update)
+            return
+        if self.on_update is not None:
+            self.on_update()
 
     def _run(self) -> None:
         while not self.stopped.is_set():
             try:
-                with connect(self.url, open_timeout=3, close_timeout=1, max_size=2**20) as socket:
+                with connect(self.url, open_timeout=3, close_timeout=1, max_size=2**20,
+                             max_queue=1, compression=None) as socket:
                     while not self.stopped.is_set():
                         try:
                             message = socket.recv(timeout=0.25)

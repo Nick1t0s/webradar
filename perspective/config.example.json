@@ -8,5 +8,8 @@
   "scale": 0.5,
   "eye_height": 64,
   "body_width": 32,
-  "body_height": 72
+  "body_height": 72,
+  "overlay_stretch": false,
+  "teammate_color": "#4ade80",
+  "enemy_color": "#ef4444"
 }

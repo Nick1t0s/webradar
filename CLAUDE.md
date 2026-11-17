@@ -14,7 +14,7 @@ CS2 WebRadar is a browser-based radar for Counter-Strike 2. It has two component
 
 ```
 CS2 process (game memory)
-    → helper/linux|windows/src/main.py (Python memory reader, ~30 Hz polling)
+    → helper/linux|windows/src/main.py (Python memory reader, target 60 Hz including collection time)
         → WebSocket server on ws://HOST:22006/cs2_webradar
             → browser WebSocket clients
                 → React components
@@ -79,7 +79,7 @@ helper command is sent only for an explicit edit of its labelled shared control.
 **How it works:**
 1. On first run it fetches current offsets from [a2x/cs2-dumper](https://github.com/a2x/cs2-dumper) and caches them in `offsets_cache.json`. The cache stays valid while `client.dll` is older than it; only if the DLL can't be found does a 1-hour TTL apply. The Windows fork also invalidates the cache when the game build changes.
 2. Opens CS2 process via `ReadProcessMemory` (requires admin or a process with a handle CS2 already has).
-3. Walks the entity list at 10 Hz, builds the JSON payload, and serves it on `ws://HOST:22006/cs2_webradar`.
+3. Walks the entity list with a target 1/60-second period including collection and broadcast time, builds the JSON payload, and serves it on `ws://HOST:22006/cs2_webradar`. Actual frequency depends on memory-read cost.
 
 **Run:**
 ```bat

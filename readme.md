@@ -20,7 +20,7 @@ A browser-based radar and overlay for Counter-Strike 2, for Windows and native L
 - **Status pill** — shows why the radar is empty (no game, menu, stale offsets, no players) with a one-click "Refresh offsets"
 - **Zoom and follow-me** — zoom the map 1x–4x and keep your own dot centred
 - **Players and utility options** — show/hide allies, ally and enemy names, and per-utility circle / name / emoji display
-- **~30 Hz updates** with smooth interpolation; settings are saved in the browser
+- **Up to 60 Hz updates**, depending on memory collection time, with smooth browser interpolation; settings are saved in the browser
 
 ## Requirements
 
@@ -86,12 +86,16 @@ python src/main.py --normal       # or --overlay / --esp
 ## Modes
 
 An additional **native Python perspective window** shows player boxes on a white
-background from a selected player's yaw and pitch, with a central crosshair.
+background from a selected player's yaw and pitch, with configurable teammate/enemy colors.
 It subscribes to the existing helper; no browser or second memory reader is needed.
 It reads CS2 camera/video settings, supports manual overrides and a size multiplier,
 and preserves aspect ratio with black bars under tiling window managers (Hyprland).
 Run `./perspective/run-linux.sh` or `perspective\run-windows.bat` after restarting
-the updated helper. See [perspective/README.md](perspective/README.md).
+the updated helper. On Linux/Hyprland, **Enable overlay** in the perspective window
+or `./perspective/run-linux.sh --overlay` adds a transparent native Wayland layer
+above CS2, with mouse/keyboard input passed through to the game. The layer follows
+the game window and hides when another application is active.
+See [perspective/README.md](perspective/README.md).
 
 | Flag | Description |
 |------|-------------|

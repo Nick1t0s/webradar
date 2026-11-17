@@ -87,3 +87,4 @@ helper/*/webview_data/
 
 # Native perspective viewer preferences
 perspective/settings.json
+perspective/.runtime/
