@@ -120,7 +120,18 @@ Needs `pyinstaller` and `pywebview`. Output: `helper\windows\dist\cs2-webradar.e
 
 ## Network and security
 
-The helper serves the webapp on port 5173 and the data on WebSocket port 22006, on all interfaces so a phone or second PC on your LAN can watch.
+The helper serves the site over HTTP on **5173** and game data over WebSocket on
+**22006**, on all interfaces so a phone or second PC on your LAN can watch.
+These are independent listeners: the site connects to
+`ws://<site-hostname>:22006/cs2_webradar`, and HTTP does not proxy WebSocket.
+Remote browser access requires forwarding both ports. `npm run dev` starts only
+Vite for the site; run the Python helper separately for data.
+
+For HTTPS hosting, configure a TLS WebSocket proxy and set `VITE_WS_URL` to its
+`wss://` endpoint. The helper itself does not provide TLS. Browser connections
+must use the same hostname for the site and data source; different ports are
+allowed. Native perspective can use a remote helper without this browser-origin
+restriction.
 
 - It rejects WebSocket connections from other websites and from unexpected hostnames (DNS-rebinding protection). A custom domain or ngrok host must be listed under `allowed_hosts` in `config.json`.
 - `refresh_offsets` and `set_auto_update` are accepted only from the machine running the helper, unless `allow_remote_control` is `true`.

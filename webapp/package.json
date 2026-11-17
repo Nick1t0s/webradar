@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "concurrently \"node ws/app.js\" \"vite\"",
+    "dev": "vite",
     "build": "vite build",
     "test": "node --test tests/*.test.js",
     "lint": "eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 0",

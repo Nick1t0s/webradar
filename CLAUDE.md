@@ -20,17 +20,17 @@ CS2 process (game memory)
                 → React components
 ```
 
-The helper serves the WebSocket itself and, when `webapp/dist` exists, the built webapp over HTTP on port 5173. `webapp/ws/app.js` is a standalone Node relay used only by `npm run dev`.
+The helper serves the WebSocket itself and, when `webapp/dist` exists, the built webapp over HTTP on port 5173. `npm run dev` starts only Vite. `webapp/ws/app.js` is an optional legacy Node relay; do not run it alongside the helper because both bind 22006.
 
 ### webapp (React + Vite)
 
 Entry: `webapp/src/app.jsx`
 
 **Connection logic** (in `App` component):
-- `getWebSocketUrl` uses the page's host and port for both HTTP (`ws://`) and HTTPS (`wss://`); `/cs2_webradar` is proxied by Vite or the helper's HTTP server
+- `getWebSocketUrl` uses the page's hostname on separate port 22006 for HTTP (`ws://`) and HTTPS (`wss://`); neither Vite nor the helper's HTTP server proxies game data
 - `USE_LOCALHOST` explicitly forces direct loopback `ws://localhost:22006` for legacy local-only setups
 - `VITE_WS_URL` env var overrides for ngrok tunnels
-- Browser viewers need only the exposed web port (normally 5173), not a separate forwarded 22006
+- Remote browser viewers need both HTTP port 5173 and WS port 22006 exposed; HTTPS needs a TLS WS proxy with an explicit endpoint
 
 **JSON payload fields** received from the helper:
 - `m_players[]` — array of player objects (m_position.x/y, m_team, m_health, m_eye_angle, m_weapons, etc.)
@@ -94,7 +94,7 @@ python src/main.py
 
 **Offset updates:** use the status pill's "Refresh offsets" button (WebSocket `refresh_offsets`, 30 s cooldown) or delete `offsets_cache.json` to force a fresh fetch. On Linux the a2x offsets are Windows-only for globals and fields, so the helper patches them with a local ELF scan and a field baseline.
 
-**WebSocket access control:** the helper rejects connections whose `Host` is not localhost, an IP, `*.ts.net` or listed in `config.json` `allowed_hosts` (DNS rebinding), and browser connections whose `Origin` host differs from `Host` (other websites). This also covers the HTTP server's `/cs2_webradar` proxy. `set_auto_update` and `refresh_offsets` are honoured only from this machine unless `allow_remote_control` is true. ngrok or custom domains must be added to `allowed_hosts`.
+**WebSocket access control:** the helper rejects connections whose `Host` is not localhost, an IP, `*.ts.net` or listed in `config.json` `allowed_hosts` (DNS rebinding), and browser connections whose `Origin` host differs from `Host` (other websites). Different HTTP/WS ports on the same hostname are accepted; cross-host browser sources are rejected. `set_auto_update` and `refresh_offsets` are honoured only from this machine unless `allow_remote_control` is true. ngrok or custom domains must be added to `allowed_hosts`.
 
 **Dependencies:** `requirements.txt` (`websockets`, `pywebview`, `Pillow`, `lz4`, `vpk`); memory access uses stdlib `ctypes`.
 
@@ -104,7 +104,7 @@ python src/main.py
 ```bash
 cd webapp
 npm install          # install dependencies
-npm run dev          # start relay server + Vite dev server (localhost:5173)
+npm run dev          # start Vite HTTP server (localhost:5173); run helper separately
 npm run build        # production build to webapp/dist/
 npm run lint         # ESLint
 npm run preview      # serve the production build
@@ -115,14 +115,18 @@ Windows (`helper/windows`): `scripts/run.bat` (as administrator). Linux (`helper
 
 ## Configuration
 
-**Localhost vs. LAN/remote** (two places must match):
+The browser defaults to the site's hostname on WS port 22006; HTTP stays on
+5173. Opening the site via localhost selects local data, while opening it via a
+LAN/public address selects that host. There is no requirement to edit
+`m_use_localhost` or `m_local_ip` to match the browser: these legacy config fields
+do not select the current listeners.
 
-| File | Setting |
-|------|---------|
-| `helper/<linux|windows>/config.json` | `m_use_localhost: true/false` |
-| `webapp/src/app.jsx` line ~12 | `const USE_LOCALHOST = 1/0` |
-
-**ngrok**: Set `VITE_WS_URL=wss://<tunnel>.ngrok-free.app/cs2_webradar` in a `.env` file before running `npm run dev`.
+An explicit `VITE_WS_URL=ws://HOST:22006/cs2_webradar` (or a secure `wss://` proxy
+endpoint) overrides the automatic URL. The legacy `USE_LOCALHOST` constant in
+`webapp/src/app.jsx` forces loopback only when no explicit endpoint is supplied.
+Custom helper domains must be in `allowed_hosts`; browser Origin must share the
+helper hostname. HTTPS needs a TLS WS reverse proxy; the Python listener itself
+serves plain WebSocket.
 
 ## Adding a New Map
 
