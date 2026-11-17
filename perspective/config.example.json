@@ -11,5 +11,6 @@
   "body_height": 72,
   "overlay_stretch": false,
   "teammate_color": "#4ade80",
-  "enemy_color": "#ef4444"
+  "enemy_color": "#ef4444",
+  "show_view_rays": true
 }
