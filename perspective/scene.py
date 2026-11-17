@@ -60,6 +60,7 @@ class Player:
     eye: Vec3 | None
     fov: float | None
     bounds: tuple[Vec3, Vec3] | None
+    health: float = 100.0
 
     @classmethod
     def parse(cls, value: object) -> Player:
@@ -93,8 +94,13 @@ class Player:
             if not all(0 < hi - lo <= 128 for lo, hi in zip((low.x, low.y, low.z), (high.x, high.y, high.z))):
                 raise FrameError("Invalid player bounds")
             bounds = (low, high)
+        try:
+            health = max(0.0, min(100.0, number(fields.get("m_health"))))
+        except FrameError:
+            # Match the radar's full-color fallback for older/malformed HP data.
+            health = 100.0
         return cls(identity, name, int(team), local, dead, Vec3.parse(fields.get("m_position")),
-                   number(fields.get("m_eye_angle")), pitch, eye, fov, bounds)
+                   number(fields.get("m_eye_angle")), pitch, eye, fov, bounds, health)
 
 
 @dataclass(frozen=True)
@@ -128,6 +134,38 @@ class Frame:
 
 Point = tuple[float, float]
 Segment = tuple[Point, Point]
+
+
+@dataclass(frozen=True)
+class LineStroke:
+    segment: Segment
+    color: str
+
+
+def player_health_strokes(segments: tuple[Segment, ...], health: float, color: str) -> tuple[LineStroke, ...]:
+    """Split visible wireframe edges at an upright, bottom-up HP level."""
+    if not segments:
+        return ()
+    if health >= 100:
+        return tuple(LineStroke(segment, color) for segment in segments)
+    if health <= 0:
+        return tuple(LineStroke(segment, "#ffffff") for segment in segments)
+    top = min(point[1] for segment in segments for point in segment)
+    bottom = max(point[1] for segment in segments for point in segment)
+    boundary = bottom - (bottom - top) * health / 100
+    strokes: list[LineStroke] = []
+    for a, b in segments:
+        a_color = color if a[1] >= boundary else "#ffffff"
+        b_color = color if b[1] >= boundary else "#ffffff"
+        if a_color == b_color:
+            strokes.append(LineStroke((a, b), a_color))
+        else:
+            t = (boundary - a[1]) / (b[1] - a[1])
+            cut = (a[0] + (b[0] - a[0]) * t, boundary)
+            strokes.extend((LineStroke((a, cut), a_color), LineStroke((cut, b), b_color)))
+    return tuple(strokes)
+
+
 BOX_EDGES = ((0, 1), (0, 2), (0, 4), (1, 3), (1, 5), (2, 3),
              (2, 6), (3, 7), (4, 5), (4, 6), (5, 7), (6, 7))
 

@@ -49,8 +49,8 @@ class NativeOverlayTests(unittest.TestCase):
         import cairo
         stop = Event()
         def send(connection: ServerConnection) -> None:
-            players = [player_data(), dict(player_data(2, False), m_position={"x": 200, "y": -70, "z": 0}),
-                       dict(player_data(3, False), m_team=2, m_position={"x": 200, "y": 70, "z": 0})]
+            players = [player_data(), dict(player_data(2, False), m_health=25, m_position={"x": 200, "y": -70, "z": 0}),
+                       dict(player_data(3, False), m_health=50, m_team=2, m_position={"x": 200, "y": 70, "z": 0})]
             try:
                 while not stop.wait(0.03):
                     connection.send(json.dumps({"m_players": players}))
@@ -103,6 +103,9 @@ class NativeOverlayTests(unittest.TestCase):
                     red_pixels = sum(1 for i in range(0, len(data) - 3, 4)
                                      if data[i + 2] > 200 and data[i + 1] < 100 and data[i] < 150)
                     self.assertGreater(red_pixels, 100, "Enemy boxes aren't drawn in their own color")
+                    white_pixels = sum(1 for i in range(0, len(data) - 3, 4)
+                                       if min(data[i:i + 3]) > 240)
+                    self.assertGreater(white_pixels, 100, "Missing HP isn't shown in white")
                     center = surface.get_height() // 2 * stride + surface.get_width() // 2 * 4
                     self.assertEqual(data[center:center + 3], data[20 * stride + 20 * 4:20 * stride + 20 * 4 + 3],
                                      "The center crosshair is still drawn")

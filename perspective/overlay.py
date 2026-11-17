@@ -26,7 +26,7 @@ from .config import GameVideo, Settings, SettingsError, discover_cfg_dirs
 from .connection import RadarConnection
 from .hyprland import GameTarget, HyprlandTracker
 from .overlay_scene import overlay_boxes
-from .scene import Frame
+from .scene import Frame, player_health_strokes
 
 
 class LayerValues(Protocol):
@@ -220,13 +220,21 @@ class Overlay:
         context.clip()
         # Dark outer stroke keeps the bright inner line readable on light maps.
         for box in boxes:
-            rgb = tuple(int(box.color[i:i + 2], 16) / 255 for i in (1, 3, 5))
-            for line_width, color in ((4, (0.0, 0.0, 0.0)), (2, rgb)):
-                context.set_line_width(line_width)
-                context.set_source_rgb(*color)
-                for a, b in box.segments:
-                    context.move_to(*a)
-                    context.line_to(*b)
+            context.set_line_width(4)
+            context.set_source_rgb(0, 0, 0)
+            for a, b in box.segments:
+                context.move_to(*a)
+                context.line_to(*b)
+            context.stroke()
+            context.set_line_width(2)
+            strokes = player_health_strokes(box.segments, box.health, box.color)
+            for color in dict.fromkeys(stroke.color for stroke in strokes):
+                context.set_source_rgb(*(int(color[i:i + 2], 16) / 255 for i in (1, 3, 5)))
+                for stroke in strokes:
+                    if stroke.color == color:
+                        a, b = stroke.segment
+                        context.move_to(*a)
+                        context.line_to(*b)
                 context.stroke()
         return True
 

@@ -11,6 +11,7 @@ from .scene import Camera, Frame, Segment, Vec3, fit_viewport
 class PlayerOutline:
     color: str
     segments: tuple[Segment, ...]
+    health: float
 
 
 def overlay_boxes(frame: Frame, settings: Settings, video: GameVideo,
@@ -37,5 +38,5 @@ def overlay_boxes(frame: Frame, settings: Settings, video: GameVideo,
                 (game.x + x + b[0] * w / width, game.y + y + b[1] * h / height))
     return tuple(PlayerOutline(settings.player_color(other, player),
                                tuple(transform(segment) for segment in camera.box(
-                                   other, width, height, settings.body_width, settings.body_height)))
+                                   other, width, height, settings.body_width, settings.body_height)), other.health)
                  for other in frame.players if not other.dead and other.identity != player.identity)

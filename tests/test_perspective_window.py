@@ -27,7 +27,7 @@ class WindowTests(unittest.TestCase):
         messages: list[str] = []
         def handle(connection: ServerConnection) -> None:
             local = player_data()
-            target = dict(player_data(2, False), m_position={"x": 200, "y": 0, "z": 0})
+            target = dict(player_data(2, False), m_position={"x": 200, "y": 0, "z": 0}, m_health=25)
             observer = dict(player_data(3, False), m_position={"x": 0, "y": 200, "z": 0},
                             m_eye_position={"x": 0, "y": 200, "z": 64}, m_eye_angle=-90)
             try:
@@ -64,6 +64,14 @@ class WindowTests(unittest.TestCase):
                 self.assertIn("FOV 90", window.status.get())
                 self.assertEqual(window.canvas.cget("background"), "black")
                 self.assertGreater(len(window.canvas.find_withtag("scene")), 3)
+                visible_colors: set[str] = set()
+                for item in window.canvas.find_withtag("scene"):
+                    fill: object = root.tk.call(str(window.canvas), "itemcget", item, "-fill")
+                    if isinstance(fill, str):
+                        visible_colors.add(fill)
+                self.assertIn("#ffffff", visible_colors)
+                self.assertIn(settings.enemy_color, visible_colors)
+                self.assertIn("black", visible_colors)
                 # Under a tiling WM geometry requests can be ignored. The viewport
                 # itself must still obey the modifier and retain the game aspect.
                 bounds = window.canvas.coords(window.canvas.find_withtag("scene")[0])

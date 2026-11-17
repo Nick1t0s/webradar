@@ -12,7 +12,7 @@ from tkinter import colorchooser, filedialog, messagebox, ttk
 
 from .config import GameVideo, Settings, SettingsError, discover_cfg_dirs
 from .connection import RadarConnection
-from .scene import Camera, Frame, Vec3, fit_viewport
+from .scene import Camera, Frame, Vec3, fit_viewport, player_health_strokes
 
 
 class PerspectiveWindow:
@@ -188,8 +188,12 @@ class PerspectiveWindow:
         for other in self.frame.players:
             if other.identity == player.identity or other.dead:
                 continue
-            for a, b in camera.box(other, width, height, self.settings.body_width, self.settings.body_height):
-                canvas.create_line(*a, *b, fill=self.settings.player_color(other, player), width=2, tags="scene")
+            segments = camera.box(other, width, height, self.settings.body_width, self.settings.body_height)
+            for a, b in segments:
+                canvas.create_line(*a, *b, fill="black", width=4, tags="scene")
+            for stroke in player_health_strokes(segments, other.health, self.settings.player_color(other, player)):
+                a, b = stroke.segment
+                canvas.create_line(*a, *b, fill=stroke.color, width=2, tags="scene")
         source = "вручную" if self.settings.fov is not None else "helper" if player.fov else "сохранённый cfg"
         missing = []
         if player.eye is None:
