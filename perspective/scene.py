@@ -1,6 +1,7 @@
 """Validated radar frames and a Source-style perspective camera."""
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 import json
 import math
@@ -107,6 +108,7 @@ class Player:
 class Frame:
     players: tuple[Player, ...]
     status: str
+    view_matrix: MatrixCamera | None = None
 
     @classmethod
     def parse(cls, message: str | bytes) -> Frame:
@@ -124,7 +126,18 @@ class Frame:
         players = tuple(Player.parse(item) for item in cast(list[object], items))
         if len({p.identity for p in players}) != len(players):
             raise FrameError("Duplicate player identities")
-        return cls(players, "")
+        matrix = None
+        raw_matrix = fields.get("m_view_matrix")
+        if isinstance(raw_matrix, list):
+            try:
+                matrix = MatrixCamera(tuple(number(value) for value in cast(list[object], raw_matrix)))
+            except FrameError:
+                pass  # Optional projection data must not discard otherwise usable players.
+        return cls(players, "", matrix)
+
+    def local_camera(self, player: Player, manual_fov: float | None) -> MatrixCamera | None:
+        """Выбирает матрицу только для локальной камеры без ручного FOV."""
+        return self.view_matrix if player.local and not player.dead and manual_fov is None else None
 
     def selected(self, identity: str) -> Player | None:
         if identity == "helper":
@@ -177,6 +190,101 @@ def fit_viewport(width: float, height: float, aspect: float,
     return (width - w) / 2, (height - h) / 2, w, h
 
 
+def clip_edge(a: Vec3, b: Vec3, tan_x: float, tan_y: float) -> tuple[Vec3, Vec3] | None:
+    """Обрезает ребро перед камерой и по четырём сторонам видимой области."""
+    for normal, offset in ((Vec3(0, 0, 1), -1), (Vec3(1, 0, tan_x), 0),
+                           (Vec3(-1, 0, tan_x), 0), (Vec3(0, 1, tan_y), 0),
+                           (Vec3(0, -1, tan_y), 0)):
+        da = a.x * normal.x + a.y * normal.y + a.z * normal.z + offset
+        db = b.x * normal.x + b.y * normal.y + b.z * normal.z + offset
+        if da < 0 and db < 0:
+            return None
+        if (da < 0) != (db < 0):
+            t = da / (da - db)
+            cut = Vec3(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, a.z + (b.z - a.z) * t)
+            if da < 0:
+                a = cut
+            else:
+                b = cut
+    return a, b
+
+
+def project_box(project: Callable[[Vec3, Vec3, float, float], Segment | None],
+                player: Player, width: float, height: float,
+                body_width: float, body_height: float) -> tuple[Segment, ...]:
+    """Проецирует общую топологию каркаса выбранной камерой."""
+    low, high = player.bounds or (Vec3(-body_width / 2, -body_width / 2, 0),
+                                 Vec3(body_width / 2, body_width / 2, body_height))
+    corners = tuple(player.position.add(Vec3(x, y, z)) for x in (low.x, high.x)
+                    for y in (low.y, high.y) for z in (low.z, high.z))
+    segments = (project(corners[a], corners[b], width, height) for a, b in BOX_EDGES)
+    return tuple(segment for segment in segments if segment is not None)
+
+
+@dataclass(frozen=True)
+class MatrixCamera:
+    """Проекция действующей камеры из матрицы рендера helper."""
+
+    values: tuple[float, ...]
+    maximum_width: float = math.inf
+
+    def __post_init__(self) -> None:
+        """Проверяет конечные значения и независимость трёх проекционных осей."""
+        if len(self.values) != 16:
+            raise FrameError("View matrix must contain 16 numbers")
+        for value in self.values:
+            number(value)
+        x, y, w = (self.values[offset:offset + 3] for offset in (0, 4, 12))
+        lengths = tuple(math.hypot(*row) for row in (x, y, w))
+        determinant = (x[0] * (y[1] * w[2] - y[2] * w[1])
+                       - x[1] * (y[0] * w[2] - y[2] * w[0])
+                       + x[2] * (y[0] * w[1] - y[1] * w[0]))
+        if (not all(math.isfinite(length) and length > 1e-9 for length in lengths)
+                or not math.isfinite(determinant)
+                or abs(determinant) <= 1e-6 * math.prod(lengths)):
+            raise FrameError("Degenerate view matrix")
+        if self.maximum_width <= 0 or math.isnan(self.maximum_width):
+            raise FrameError("Invalid camera viewport width")
+
+    @property
+    def aspect(self) -> float:
+        """Возвращает соотношение сторон действующей проекции."""
+        return math.hypot(*self.values[4:7]) / math.hypot(*self.values[:3])
+
+    @property
+    def fov(self) -> float:
+        """Возвращает эквивалентный горизонтальный FOV при соотношении 4:3."""
+        tangent = math.hypot(*self.values[12:15]) / math.hypot(*self.values[4:7])
+        return math.degrees(2 * math.atan(tangent * 4 / 3))
+
+    def viewport(self, width: float, height: float) -> tuple[float, float, float, float]:
+        """Вписывает действующее изображение в доступную поверхность."""
+        return fit_viewport(width, height, self.aspect, self.maximum_width)
+
+    def to_clip(self, point: Vec3) -> Vec3:
+        """Переводит мировую точку в однородные координаты X, Y и W."""
+        m = self.values
+        scale = math.hypot(*m[12:15])
+        return Vec3(*((m[i] * point.x + m[i + 1] * point.y + m[i + 2] * point.z + m[i + 3]) / scale
+                      for i in (0, 4, 12)))
+
+    def project_edge(self, a: Vec3, b: Vec3, width: float, height: float) -> Segment | None:
+        """Проецирует ребро с обрезкой до деления на глубину W."""
+        clipped = clip_edge(self.to_clip(a), self.to_clip(b), 1, 1)
+        if clipped is None:
+            return None
+        left, top, w, h = self.viewport(width, height)
+        def project(point: Vec3) -> Point:
+            """Делит видимые координаты на W и переводит их в пиксели."""
+            return left + w / 2 * (1 + point.x / point.z), top + h / 2 * (1 - point.y / point.z)
+        return project(clipped[0]), project(clipped[1])
+
+    def box(self, player: Player, width: float, height: float,
+            body_width: float, body_height: float) -> tuple[Segment, ...]:
+        """Строит каркас тела в действующей проекции игры."""
+        return project_box(self.project_edge, player, width, height, body_width, body_height)
+
+
 @dataclass(frozen=True)
 class Camera:
     eye: Vec3
@@ -199,35 +307,19 @@ class Camera:
         return fit_viewport(width, height, self.aspect, self.maximum_width)
 
     def project_edge(self, a: Vec3, b: Vec3, width: float, height: float) -> Segment | None:
-        a, b = self.to_view(a), self.to_view(b)
-        left, top, w, h = self.viewport(width, height)
+        """Проецирует ребро реконструированной камеры с обрезкой по её границам."""
         tan_y = math.tan(math.radians(self.fov) / 2) / (4 / 3)
         tan_x = tan_y * self.aspect
-        # Clip in camera space against near and four side planes before division.
-        # This handles players straddling the eye plane without enormous coordinates.
-        for normal, offset in ((Vec3(0, 0, 1), -1), (Vec3(1, 0, tan_x), 0),
-                               (Vec3(-1, 0, tan_x), 0), (Vec3(0, 1, tan_y), 0),
-                               (Vec3(0, -1, tan_y), 0)):
-            da = a.x * normal.x + a.y * normal.y + a.z * normal.z + offset
-            db = b.x * normal.x + b.y * normal.y + b.z * normal.z + offset
-            if da < 0 and db < 0:
-                return None
-            if (da < 0) != (db < 0):
-                t = da / (da - db)
-                cut = Vec3(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, a.z + (b.z - a.z) * t)
-                if da < 0:
-                    a = cut
-                else:
-                    b = cut
+        clipped = clip_edge(self.to_view(a), self.to_view(b), tan_x, tan_y)
+        if clipped is None:
+            return None
+        left, top, w, h = self.viewport(width, height)
         def project(p: Vec3) -> Point:
+            """Переводит видимую точку камеры в координаты поверхности."""
             return left + w / 2 * (1 + p.x / (p.z * tan_x)), top + h / 2 * (1 - p.y / (p.z * tan_y))
-        return project(a), project(b)
+        return project(clipped[0]), project(clipped[1])
 
     def box(self, player: Player, width: float, height: float,
             body_width: float, body_height: float) -> tuple[Segment, ...]:
-        low, high = player.bounds or (Vec3(-body_width / 2, -body_width / 2, 0),
-                                     Vec3(body_width / 2, body_width / 2, body_height))
-        corners = tuple(player.position.add(Vec3(x, y, z)) for x in (low.x, high.x)
-                        for y in (low.y, high.y) for z in (low.z, high.z))
-        segments = (self.project_edge(corners[a], corners[b], width, height) for a, b in BOX_EDGES)
-        return tuple(segment for segment in segments if segment is not None)
+        """Строит каркас тела по углам выбранного игрока."""
+        return project_box(self.project_edge, player, width, height, body_width, body_height)
