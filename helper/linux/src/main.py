@@ -23,6 +23,8 @@ import urllib.request
 import webbrowser
 from pathlib import Path
 
+from camera_telemetry import CameraOffsets, read_camera
+
 from platform_utils import (
     IS_LINUX,
     IS_WINDOWS,
@@ -1284,6 +1286,8 @@ _RADAR_NETVARS = (
     "m_vecAbsOrigin", "m_bInPostEffectTime", "m_firePositions", "m_nFireCount",
     "m_bBeingDefused", "m_bBombDefused", "m_bBombTicking", "m_flC4Blow", "m_flDefuseCountDown",
     "m_hActiveWeapon", "m_hMyWeapons", "m_nSmokeEffectTickBegin",
+    "m_vecViewOffset", "m_pCameraServices", "m_iFOV",
+    "m_pCollision", "m_vecMins", "m_vecMaxs",
 )
 
 
@@ -2491,6 +2495,21 @@ class CS2Reader:
         except Exception as exc:
             log.warning("TEAM-DIAG failed: %s", exc)
 
+    def _camera_offsets(self) -> CameraOffsets:
+        def offset(cls: str, field: str) -> int:
+            # Optional new fields use only live Linux offsets, never Windows seeds.
+            return self._nv_off(field) if IS_LINUX else self._off(cls, field)
+
+        return CameraOffsets(
+            angles=self._off("C_CSPlayerPawn", "m_angEyeAngles"),
+            view=offset("C_BaseModelEntity", "m_vecViewOffset"),
+            services=offset("C_BasePlayerPawn", "m_pCameraServices"),
+            fov=offset("CCSPlayerBase_CameraServices", "m_iFOV"),
+            collision=offset("C_BaseEntity", "m_pCollision"),
+            mins=offset("CCollisionProperty", "m_vecMins"),
+            maxs=offset("CCollisionProperty", "m_vecMaxs"),
+        )
+
     # ── scene origin ──────────────────────────────────────────────────────────
     def _origin(self, entity_ptr: int) -> tuple[float, float, float]:
         off_node   = self._off("C_BaseEntity", "m_pGameSceneNode")
@@ -3067,6 +3086,7 @@ class CS2Reader:
         off_color    = self._off("CCSPlayerController",  "m_iCompTeammateColor")
         off_armor    = self._off("C_CSPlayerPawn",       "m_ArmorValue")
         off_eye      = self._off("C_CSPlayerPawn",       "m_angEyeAngles")
+        camera_offsets = self._camera_offsets()
         off_isvc     = self._off("C_BasePlayerPawn",     "m_pItemServices")
         off_defuser  = self._off("CCSPlayer_ItemServices","m_bHasDefuser")
         off_helmet   = self._off("CCSPlayer_ItemServices","m_bHasHelmet")
@@ -3281,6 +3301,7 @@ class CS2Reader:
                     "m_armor":      armor,
                     "m_position":   {"x": x, "y": y, "z": z},
                     "m_eye_angle":  eye_yaw,
+                    **read_camera(self.mem, pawn, camera_offsets, (x, y, z)),
                     "m_has_helmet": has_helmet,
                     "m_has_defuser":has_defuser,
                     "m_weapons":    weapons,
@@ -3385,6 +3406,7 @@ class CS2Reader:
                             "m_armor":      armor,
                             "m_position":   {"x": x, "y": y, "z": z},
                             "m_eye_angle":  eye_yaw,
+                            **read_camera(self.mem, pawn, camera_offsets, (x, y, z)),
                             "m_has_helmet": has_helmet,
                             "m_has_defuser":has_defuser,
                             "m_weapons":    weapons,
@@ -3453,6 +3475,7 @@ class CS2Reader:
                             "m_armor":      armor,
                             "m_position":   {"x": x, "y": y, "z": z},
                             "m_eye_angle":  eye_yaw,
+                            **read_camera(self.mem, pawn, camera_offsets, (x, y, z)),
                             "m_has_helmet": has_helmet,
                             "m_has_defuser":has_defuser,
                             "m_weapons":    weapons,

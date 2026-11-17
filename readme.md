@@ -85,6 +85,14 @@ python src/main.py --normal       # or --overlay / --esp
 
 ## Modes
 
+An additional **native Python perspective window** shows player boxes on a white
+background from a selected player's yaw and pitch, with a central crosshair.
+It subscribes to the existing helper; no browser or second memory reader is needed.
+It reads CS2 camera/video settings, supports manual overrides and a size multiplier,
+and preserves aspect ratio with black bars under tiling window managers (Hyprland).
+Run `./perspective/run-linux.sh` or `perspective\run-windows.bat` after restarting
+the updated helper. See [perspective/README.md](perspective/README.md).
+
 | Flag | Description |
 |------|-------------|
 | `--normal` | Browser radar — open `localhost:5173` in any browser |

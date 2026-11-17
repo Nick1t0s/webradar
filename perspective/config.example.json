@@ -1,0 +1,12 @@
+{
+  "ws_url": "ws://localhost:22006/cs2_webradar",
+  "cfg_dir": null,
+  "player": "helper",
+  "width": null,
+  "height": null,
+  "fov": null,
+  "scale": 0.5,
+  "eye_height": 64,
+  "body_width": 32,
+  "body_height": 72
+}

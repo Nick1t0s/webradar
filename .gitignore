@@ -84,3 +84,6 @@ Desktop.ini
 *log*
 # pywebview overlay storage (minimap/ESP settings)
 helper/*/webview_data/
+
+# Native perspective viewer preferences
+perspective/settings.json
