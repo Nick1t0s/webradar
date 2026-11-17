@@ -62,6 +62,7 @@ class Player:
     fov: float | None
     bounds: tuple[Vec3, Vec3] | None
     health: float = 100.0
+    active_weapon: str = ""
 
     @classmethod
     def parse(cls, value: object) -> Player:
@@ -100,8 +101,14 @@ class Player:
         except FrameError:
             # Match the radar's full-color fallback for older/malformed HP data.
             health = 100.0
+        weapons = fields.get("m_weapons")
+        active_weapon = ""
+        if isinstance(weapons, dict):
+            active = object_fields(weapons).get("m_active")
+            if isinstance(active, str):
+                active_weapon = active.removeprefix("weapon_")
         return cls(identity, name, int(team), local, dead, Vec3.parse(fields.get("m_position")),
-                   number(fields.get("m_eye_angle")), pitch, eye, fov, bounds, health)
+                   number(fields.get("m_eye_angle")), pitch, eye, fov, bounds, health, active_weapon)
 
 
 @dataclass(frozen=True)

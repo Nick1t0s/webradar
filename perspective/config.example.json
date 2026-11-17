@@ -12,5 +12,12 @@
   "overlay_stretch": false,
   "teammate_color": "#4ade80",
   "enemy_color": "#ef4444",
-  "show_view_rays": true
+  "show_view_rays": true,
+  "recoil": {
+    "enabled": false,
+    "mouse_device": "",
+    "sensitivity": 1.0,
+    "strength": 1.0,
+    "toggle_button": "BTN_SIDE"
+  }
 }

@@ -4,6 +4,7 @@ from __future__ import annotations
 from dataclasses import replace
 from pathlib import Path
 from functools import partial
+from typing import TYPE_CHECKING
 import subprocess
 import sys
 import time
@@ -13,6 +14,9 @@ from tkinter import colorchooser, filedialog, messagebox, ttk
 from .config import GameVideo, Settings, SettingsError, discover_cfg_dirs
 from .connection import RadarConnection
 from .scene import Camera, Frame, MatrixCamera, Vec3, player_health_strokes, project_view_ray
+
+if TYPE_CHECKING:
+    from .recoil_linux import RecoilService
 
 
 class PerspectiveWindow:
@@ -25,6 +29,7 @@ class PerspectiveWindow:
         self.video = GameVideo.read(None)
         self.profile_key = ""
         self.overlay: subprocess.Popen[bytes] | None = None
+        self.recoil_service: RecoilService | None = None
         self.overlay_log = Path(__file__).with_name(".runtime") / "overlay.log"
         self.labels: dict[str, str] = {"Главный игрок helper": "helper"}
         self.connection = RadarConnection(settings.ws_url)
@@ -50,6 +55,15 @@ class PerspectiveWindow:
         source_bar.pack(fill="x")
         ttk.Label(source_bar, textvariable=self.source, wraplength=900).pack(side="left", fill="x", expand=True)
         ttk.Button(source_bar, text="Подключение…", command=self.open_settings).pack(side="right")
+        self.recoil_status = tk.StringVar(value="Отдача: выключена")
+        if sys.platform.startswith("linux"):
+            from .recoil_linux import RecoilService
+            self.recoil_service = RecoilService(settings_path)
+            self.recoil_service.start()
+            recoil_bar = ttk.Frame(root, padding=(6, 3))
+            recoil_bar.pack(fill="x")
+            ttk.Label(recoil_bar, textvariable=self.recoil_status, wraplength=700).pack(side="left", fill="x", expand=True)
+            ttk.Button(recoil_bar, text="Контроль отдачи…", command=self.open_recoil_settings).pack(side="right")
         self.status = tk.StringVar()
         ttk.Label(root, textvariable=self.status, padding=5, wraplength=1100).pack(side="bottom", fill="x")
         self.canvas = tk.Canvas(root, background="black", highlightthickness=0)
@@ -130,6 +144,8 @@ class PerspectiveWindow:
         self.root.geometry(f"{round(width * self.settings.scale)}x{round(height * self.settings.scale) + chrome}")
 
     def _tick(self) -> None:
+        if self.recoil_service is not None and self.recoil_status.get() != self.recoil_service.status:
+            self.recoil_status.set(self.recoil_service.status)
         if self.overlay is not None and self.overlay.poll() is not None:
             code = self.overlay.returncode
             self._stop_overlay()
@@ -300,6 +316,7 @@ class PerspectiveWindow:
             raw["player"] = self.settings.player
             raw["overlay_stretch"] = stretch.get()
             raw["show_view_rays"] = view_rays.get()
+            raw["recoil"] = self.settings.recoil
             try:
                 for key in ("width", "height", "fov", "scale", "eye_height", "body_width", "body_height"):
                     text = entries[key].get().strip().replace(",", ".")
@@ -314,8 +331,15 @@ class PerspectiveWindow:
             dialog.destroy()
         ttk.Button(dialog, text="Применить", command=apply).grid(row=len(fields) + 3, column=1, pady=12)
 
+    def open_recoil_settings(self) -> None:
+        """Открывает параметры Linux-компенсации отдельно от камеры."""
+        from .recoil_window import open_recoil_settings
+        open_recoil_settings(self.root, self.settings, self.settings_path, self._apply_settings)
+
     def close(self) -> None:
         self.root.after_cancel(self.timer)
+        if self.recoil_service is not None:
+            self.recoil_service.stop()
         self._stop_overlay()
         self.connection.stop()
         self.root.destroy()

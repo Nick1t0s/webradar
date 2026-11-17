@@ -1,7 +1,7 @@
 """Local viewer settings and read-only discovery of CS2 video/convar files."""
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 import json
 import os
 from pathlib import Path
@@ -11,6 +11,7 @@ from typing import cast
 from urllib.parse import urlsplit
 
 from .scene import FrameError, Player, number, object_fields
+from .recoil import RecoilSettings
 
 
 class SettingsError(ValueError):
@@ -47,12 +48,15 @@ class Settings:
     teammate_color: str = "#4ade80"
     enemy_color: str = "#ef4444"
     show_view_rays: bool = True
+    recoil: RecoilSettings = field(default_factory=RecoilSettings)
 
     def __post_init__(self) -> None:
         """Проверяет источник и показ лучей при любом способе создания настроек."""
         validate_ws_url(self.ws_url)
         if not isinstance(self.show_view_rays, bool):
             raise SettingsError("show_view_rays: нужно true или false")
+        if not isinstance(self.recoil, RecoilSettings):
+            raise SettingsError("recoil: нужны проверенные настройки компенсации")
 
     @classmethod
     def load(cls, path: Path) -> Settings:
@@ -74,6 +78,7 @@ class Settings:
             fields.setdefault("teammate_color", "#4ade80")
             fields.setdefault("enemy_color", "#ef4444")
             fields.setdefault("show_view_rays", True)
+            fields.setdefault("recoil", {})
             if set(fields) != set(cls.__dataclass_fields__):
                 raise SettingsError("Нужны все поля из config.example.json; неизвестные поля запрещены")
             url, cfg, player = fields["ws_url"], fields["cfg_dir"], fields["player"]
@@ -107,7 +112,7 @@ class Settings:
                     raise SettingsError(f"{key}: нужен цвет #RRGGBB")
                 colors.append(color.lower())
             return cls(url, cfg, player, dimensions[0], dimensions[1], fov, scale, eye, width, height, stretch,
-                       colors[0], colors[1], cast(bool, fields["show_view_rays"]))
+                       colors[0], colors[1], cast(bool, fields["show_view_rays"]), RecoilSettings.parse(fields["recoil"]))
         except (FrameError, KeyError, ValueError) as exc:
             raise SettingsError(str(exc)) from exc
 

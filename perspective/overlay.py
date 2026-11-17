@@ -24,6 +24,7 @@ from gi.repository import Gdk, GLib, Gtk
 from .config import SettingsError
 from .hyprland import GameTarget, HyprlandTracker
 from .overlay_state import OverlayState
+from .recoil_linux import RecoilService
 from .scene import player_health_strokes
 
 
@@ -68,6 +69,8 @@ class Overlay:
         if not LayerShell.is_supported():
             raise SettingsError("Нужен Wayland compositor с layer-shell (Hyprland)")
         self.state = OverlayState(settings_path, self._notify_frame)
+        self.recoil_service = RecoilService(settings_path)
+        self.last_recoil_status = ""
         self.desktop = HyprlandTracker()
         self.target: GameTarget | None = None
         self.last_message = ""
@@ -98,6 +101,7 @@ class Overlay:
         self.window.connect("size-allocate", self._input_region)
         self.state.start()
         self.desktop.start()
+        self.recoil_service.start()
         self.timer = GLib.timeout_add(16, self._tick)
         self.reload_timer = GLib.timeout_add(500, self._reload_settings)
 
@@ -125,6 +129,9 @@ class Overlay:
 
     def _reload_settings(self) -> bool:
         """Перечитывает общие настройки и запрашивает перерисовку."""
+        if self.recoil_service.status != self.last_recoil_status:
+            self.last_recoil_status = self.recoil_service.status
+            print(self.last_recoil_status, file=sys.stderr, flush=True)
         try:
             if self.state.reload():
                 self.window.queue_draw()
@@ -233,6 +240,7 @@ class Overlay:
             self.closed = True
             GLib.source_remove(self.timer)
             GLib.source_remove(self.reload_timer)
+            self.recoil_service.stop()
             self.state.close()
             self.desktop.stop()
             self.window.destroy()
