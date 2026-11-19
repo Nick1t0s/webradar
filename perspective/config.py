@@ -10,8 +10,8 @@ import sys
 from typing import cast
 from urllib.parse import urlsplit
 
+from .aim_settings import AimSettings, AimSettingsError
 from .scene import FrameError, Player, number, object_fields
-from .recoil import RecoilSettings
 
 
 class SettingsError(ValueError):
@@ -48,15 +48,15 @@ class Settings:
     teammate_color: str = "#4ade80"
     enemy_color: str = "#ef4444"
     show_view_rays: bool = True
-    recoil: RecoilSettings = field(default_factory=RecoilSettings)
+    aim: AimSettings = field(default_factory=AimSettings)
 
     def __post_init__(self) -> None:
         """Проверяет источник и показ лучей при любом способе создания настроек."""
         validate_ws_url(self.ws_url)
         if not isinstance(self.show_view_rays, bool):
             raise SettingsError("show_view_rays: нужно true или false")
-        if not isinstance(self.recoil, RecoilSettings):
-            raise SettingsError("recoil: нужны проверенные настройки компенсации")
+        if not isinstance(self.aim, AimSettings):
+            raise SettingsError("aim: нужны проверенные настройки AimSettings")
 
     @classmethod
     def load(cls, path: Path) -> Settings:
@@ -70,7 +70,7 @@ class Settings:
 
     @classmethod
     def parse(cls, raw: object) -> Settings:
-        """Читает настройки и добавляет новые поля старым сохранённым профилям."""
+        """Читает настройки, игнорируя устаревший ключ recoil и проверяя остальные поля."""
         try:
             fields = object_fields(raw)
             # Existing perspective preferences predate the overlay display mode.
@@ -78,7 +78,8 @@ class Settings:
             fields.setdefault("teammate_color", "#4ade80")
             fields.setdefault("enemy_color", "#ef4444")
             fields.setdefault("show_view_rays", True)
-            fields.setdefault("recoil", {})
+            fields.setdefault("aim", {})
+            fields.pop("recoil", None)
             if set(fields) != set(cls.__dataclass_fields__):
                 raise SettingsError("Нужны все поля из config.example.json; неизвестные поля запрещены")
             url, cfg, player = fields["ws_url"], fields["cfg_dir"], fields["player"]
@@ -111,8 +112,16 @@ class Settings:
                 if not isinstance(color, str) or not re.fullmatch(r"#[0-9a-fA-F]{6}", color):
                     raise SettingsError(f"{key}: нужен цвет #RRGGBB")
                 colors.append(color.lower())
+            aim_raw = fields["aim"]
+            if isinstance(aim_raw, AimSettings):
+                aim_obj = aim_raw
+            else:
+                try:
+                    aim_obj = AimSettings.parse(aim_raw)
+                except AimSettingsError as exc:
+                    raise SettingsError(f"aim: {exc}") from exc
             return cls(url, cfg, player, dimensions[0], dimensions[1], fov, scale, eye, width, height, stretch,
-                       colors[0], colors[1], cast(bool, fields["show_view_rays"]), RecoilSettings.parse(fields["recoil"]))
+                       colors[0], colors[1], cast(bool, fields["show_view_rays"]), aim_obj)
         except (FrameError, KeyError, ValueError) as exc:
             raise SettingsError(str(exc)) from exc
 

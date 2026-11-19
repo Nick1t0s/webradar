@@ -13,12 +13,12 @@
   "teammate_color": "#4ade80",
   "enemy_color": "#ef4444",
   "show_view_rays": true,
-  "recoil": {
+  "aim": {
     "enabled": false,
     "mouse_device": "",
     "sensitivity": 1.0,
-    "strength": 1.0,
-    "toggle_button": "BTN_SIDE",
-    "mode": "profile"
+    "button": "BTN_SIDE",
+    "radius_percent": 10.0,
+    "target": "head"
   }
 }

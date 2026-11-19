@@ -6,6 +6,7 @@ from dataclasses import dataclass
 import os
 from pathlib import Path
 import struct
+from typing import Literal
 
 
 class MouseError(OSError):
@@ -23,7 +24,8 @@ UI_SET_KEYBIT = 0x40045565
 UI_SET_RELBIT = 0x40045566
 BTN_LEFT = 0x110
 BUTTONS = {"BTN_SIDE": 0x113, "BTN_EXTRA": 0x114}
-VIRTUAL_NAME = "CS2 Perspective Recoil"
+VIRTUAL_NAME = "CS2 Perspective Aim"
+OLD_VIRTUAL_NAME = "CS2 Perspective Recoil"
 
 
 @dataclass(frozen=True)
@@ -51,7 +53,8 @@ def mouse_choices() -> tuple[MouseDevice, ...]:
             keys = (path / "device/capabilities/key").read_text().split()
             word_bits = struct.calcsize("L") * 8
             mask = sum(int(word, 16) << (index * word_bits) for index, word in enumerate(reversed(keys)))
-            if words and int(words[-1], 16) & 3 == 3 and mask & (1 << BTN_LEFT) and name != VIRTUAL_NAME:
+            if (words and int(words[-1], 16) & 3 == 3 and mask & (1 << BTN_LEFT)
+                    and name not in (VIRTUAL_NAME, OLD_VIRTUAL_NAME)):
                 device = f"/dev/input/{path.name}"
                 stable = next((str(link) for link in sorted(Path("/dev/input/by-id").glob("*event-mouse"))
                                if link.resolve() == Path(device)), device)
@@ -85,21 +88,23 @@ def device_bits(fd: int, request: int, size: int) -> bytes:
 class LinuxMouse:
     """Владеет дескрипторами физической и виртуальной мышей без захвата ввода."""
 
-    def __init__(self, device: str, toggle_button: str) -> None:
+    def __init__(self, device: str, button: Literal["BTN_SIDE", "BTN_EXTRA"] | str) -> None:
         """Проверяет выбранную мышь и создаёт устройство только для движений."""
         self.input_fd = -1
         self.output_fd = -1
         self.created = False
-        self.toggle_code = BUTTONS[toggle_button]
+        if button not in BUTTONS:
+            raise MouseError(f"Неизвестная кнопка мыши: {button}")
+        self.toggle_code = BUTTONS[button]
         try:
             self.input_fd = os.open(mouse_path(device), os.O_RDONLY | os.O_NONBLOCK | os.O_CLOEXEC)
             name = device_bits(self.input_fd, 0x4506, 256).split(b"\0", 1)[0].decode(errors="replace")
             keys = int.from_bytes(device_bits(self.input_fd, 0x4521, 96), "little")
             axes = int.from_bytes(device_bits(self.input_fd, 0x4522, 16), "little")
-            if name == VIRTUAL_NAME or not keys & (1 << BTN_LEFT) or axes & 3 != 3:
+            if name in (VIRTUAL_NAME, OLD_VIRTUAL_NAME) or not keys & (1 << BTN_LEFT) or axes & 3 != 3:
                 raise MouseError("Выбранное устройство не является физической относительной мышью")
             if not keys & (1 << self.toggle_code):
-                raise MouseError(f"Мышь не поддерживает {toggle_button}; выберите другую боковую кнопку")
+                raise MouseError(f"Мышь не поддерживает {button}; выберите другую боковую кнопку")
             self.output_fd = os.open("/dev/uinput", os.O_WRONLY | os.O_NONBLOCK | os.O_CLOEXEC)
             fcntl.ioctl(self.output_fd, UI_SET_EVBIT, 1)  # EV_KEY
             fcntl.ioctl(self.output_fd, UI_SET_KEYBIT, BTN_LEFT)
@@ -113,16 +118,16 @@ class LinuxMouse:
             self.close()
             raise MouseError(f"Ввод мыши: {exc}. Нужны чтение выбранного устройства и запись в /dev/uinput") from exc
 
-    def buttons(self) -> tuple[bool, bool]:
-        """Возвращает состояние ЛКМ и выбранной боковой кнопки без записи событий."""
+    def held(self) -> bool:
+        """Возвращает состояние удержания выбранной боковой кнопки без очереди событий."""
         mask = int.from_bytes(device_bits(self.input_fd, 0x4518, 96), "little")  # EVIOCGKEY
-        return bool(mask & (1 << BTN_LEFT)), bool(mask & (1 << self.toggle_code))
+        return bool(mask & (1 << self.toggle_code))
 
-    def move(self, x: int, y: int) -> None:
+    def move(self, dx: int, dy: int) -> None:
         """Отправляет только относительное перемещение, не создавая нажатий."""
-        if not x and not y:
+        if not dx and not dy:
             return
-        events = EVENT.pack(0, 0, 2, 0, x) + EVENT.pack(0, 0, 2, 1, y) + EVENT.pack(0, 0, 0, 0, 0)
+        events = EVENT.pack(0, 0, 2, 0, dx) + EVENT.pack(0, 0, 2, 1, dy) + EVENT.pack(0, 0, 0, 0, 0)
         if os.write(self.output_fd, events) != len(events):
             raise MouseError("Неполная запись движения мыши")
 
