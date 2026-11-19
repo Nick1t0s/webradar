@@ -50,11 +50,15 @@ def open_aim_settings(root: tk.Tk, settings: Settings, settings_path: Path,
     ttk.Combobox(dialog, textvariable=target_var, values=("Голова", "Тело"), state="readonly").grid(
         row=5, column=1, padx=10, pady=5, sticky="ew")
 
+    include_teammates = tk.BooleanVar(value=configured.include_teammates)
+    ttk.Checkbutton(dialog, text="Наводиться и на союзников", variable=include_teammates).grid(
+        row=6, column=0, columnspan=2, padx=10, pady=5, sticky="w")
+
     ttk.Label(dialog, text=("Автонаводка перемещает прицел к ближайшей цели внутри круга при удержании Mouse4/Mouse5.\n"
                            "Радиус круга задаётся в процентах от высоты игры (1–50%).\n"
                            "Требуются права доступа к выбранной мыши и /dev/uinput.\n"
                            "Стены и видимость не проверяются; приближение точек головы/тела по данным helper."),
-              wraplength=750).grid(row=6, column=0, columnspan=2, padx=10, pady=8, sticky="w")
+              wraplength=750).grid(row=7, column=0, columnspan=2, padx=10, pady=8, sticky="w")
     dialog.columnconfigure(1, weight=1)
 
     def apply() -> None:
@@ -67,6 +71,7 @@ def open_aim_settings(root: tk.Tk, settings: Settings, settings_path: Path,
                 button="BTN_SIDE" if button.get() == "Mouse4" else "BTN_EXTRA",
                 radius_percent=float(radius_percent.get().replace(",", ".")),
                 target="head" if target_var.get() == "Голова" else "body",
+                include_teammates=include_teammates.get(),
             )
             # Re-read to preserve camera changes made in another settings dialog.
             updated = replace(Settings.load(settings_path), aim=aim)
@@ -77,4 +82,4 @@ def open_aim_settings(root: tk.Tk, settings: Settings, settings_path: Path,
             return
         dialog.destroy()
 
-    ttk.Button(dialog, text="Применить", command=apply).grid(row=7, column=1, padx=10, pady=10, sticky="e")
+    ttk.Button(dialog, text="Применить", command=apply).grid(row=8, column=1, padx=10, pady=10, sticky="e")

@@ -26,6 +26,18 @@ class AimSettingsTests(unittest.TestCase):
         self.assertEqual(aim.button, "BTN_SIDE")
         self.assertEqual(aim.radius_percent, 10.0)
         self.assertEqual(aim.target, "head")
+        self.assertFalse(aim.include_teammates)
+
+    def test_validation_include_teammates(self) -> None:
+        """include_teammates строго логическое значение bool."""
+        with self.assertRaises(AimSettingsError):
+            AimSettings.parse({"include_teammates": "true"})
+        with self.assertRaises(AimSettingsError):
+            AimSettings.parse({"include_teammates": 1})
+        aim_true = AimSettings(include_teammates=True)
+        self.assertTrue(aim_true.include_teammates)
+        parsed = AimSettings.parse({"include_teammates": True})
+        self.assertTrue(parsed.include_teammates)
 
     def test_validation_enabled_requires_mouse_device(self) -> None:
         """Включение требует заданного mouse_device."""
@@ -108,7 +120,7 @@ class AimSettingsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "settings.json"
             base_dict = asdict(settings())
-            # Сохранение и перезагрузка с AimSettings
+            # Сохранение и перезагрузка с AimSettings, включая include_teammates=True
             custom_aim = AimSettings(
                 enabled=True,
                 mouse_device="/dev/input/event5",
@@ -116,11 +128,25 @@ class AimSettingsTests(unittest.TestCase):
                 button="BTN_EXTRA",
                 radius_percent=15.0,
                 target="body",
+                include_teammates=True,
             )
             cfg = replace(settings(), aim=custom_aim)
             cfg.save(path)
             loaded = Settings.load(path)
             self.assertEqual(loaded.aim, custom_aim)
+            self.assertTrue(loaded.aim.include_teammates)
+
+            # Совместимость со старыми конфигами без ключа include_teammates
+            aim_dict_no_teammates = {
+                "enabled": False,
+                "mouse_device": "",
+                "sensitivity": 1.0,
+                "button": "BTN_SIDE",
+                "radius_percent": 10.0,
+                "target": "head",
+            }
+            parsed_legacy = Settings.parse(dict(base_dict, aim=aim_dict_no_teammates))
+            self.assertFalse(parsed_legacy.aim.include_teammates)
 
             # Старый recoil игнорируется
             with_recoil = dict(base_dict, recoil={"enabled": True, "strength": 1.0})
@@ -265,6 +291,52 @@ class AimTargetSelectionTests(unittest.TestCase):
         # Враг слишком близко (W < 0.1)
         close_enemy = make_player("too_close", team=3, pos=Vec3(0.05, 0, 0), eye=Vec3(0.05, 0, 64))
         self.assertIsNone(select_target(Frame((local, close_enemy), "", self.camera), cfg))
+
+    def test_include_teammates_selection(self) -> None:
+        """Проверяет наводку на союзников: переключение, исключение себя/наблюдателей/мертвых."""
+        local = make_player("local", team=2, pos=Vec3(0, 0, 0), eye=self.eye, local=True)
+        # Ближний союзник (dist меньше к центру экрана) и дальний противник
+        ally_close = make_player("ally_close", team=2, pos=Vec3(500, -10, 0), eye=Vec3(500, -10, 64), name="AllyClose")
+        enemy_far = make_player("enemy_far", team=3, pos=Vec3(500, -30, 0), eye=Vec3(500, -30, 64), name="EnemyFar")
+
+        frame = Frame((local, ally_close, enemy_far), "", self.camera)
+
+        # При выключенном флаге союзник игнорируется, выбирается противник
+        cfg_off = replace(self.base_settings, aim=AimSettings(include_teammates=False, radius_percent=20.0))
+        target_off = select_target(frame, cfg_off)
+        self.assertIsNotNone(target_off)
+        assert target_off is not None
+        self.assertEqual(target_off.identity, "enemy_far")
+
+        # При включении ближний союзник выигрывает у дальнего противника
+        cfg_on = replace(self.base_settings, aim=AimSettings(include_teammates=True, radius_percent=20.0))
+        target_on = select_target(frame, cfg_on)
+        self.assertIsNotNone(target_on)
+        assert target_on is not None
+        self.assertEqual(target_on.identity, "ally_close")
+
+        # Противник остаётся доступен, если союзников нет или противник ближе
+        enemy_closer = make_player("enemy_closer", team=3, pos=Vec3(500, -5, 0), eye=Vec3(500, -5, 64), name="EnemyCloser")
+        frame_enemy_closer = Frame((local, ally_close, enemy_closer), "", self.camera)
+        target_enemy_closer = select_target(frame_enemy_closer, cfg_on)
+        self.assertIsNotNone(target_enemy_closer)
+        assert target_enemy_closer is not None
+        self.assertEqual(target_enemy_closer.identity, "enemy_closer")
+
+        # Сам игрок никогда не выбирается целью (даже если один в кадре)
+        frame_self_only = Frame((local,), "", self.camera)
+        self.assertIsNone(select_target(frame_self_only, cfg_on))
+
+        # Наблюдатель (team=1) исключается даже при включённом include_teammates
+        spectator = make_player("spec", team=1, pos=Vec3(500, 0, 0), eye=Vec3(500, 0, 64))
+        frame_spec = Frame((local, spectator), "", self.camera)
+        self.assertIsNone(select_target(frame_spec, cfg_on))
+
+        # Мёртвый союзник и союзник с 0 HP исключаются
+        dead_ally = make_player("dead_ally", team=2, pos=Vec3(500, 0, 0), eye=Vec3(500, 0, 64), dead=True)
+        self.assertIsNone(select_target(Frame((local, dead_ally), "", self.camera), cfg_on))
+        zero_hp_ally = make_player("zero_hp_ally", team=2, pos=Vec3(500, 0, 0), eye=Vec3(500, 0, 64), health=0.0)
+        self.assertIsNone(select_target(Frame((local, zero_hp_ally), "", self.camera), cfg_on))
 
     def test_head_versus_body_target_points(self) -> None:
         """Проверяет различие позиций head и body при наличии и отсутствии bounds/eye."""

@@ -22,6 +22,7 @@ class AimSettings:
     button: Literal["BTN_SIDE", "BTN_EXTRA"] = "BTN_SIDE"
     radius_percent: float = 10.0
     target: Literal["head", "body"] = "head"
+    include_teammates: bool = False
 
     def __post_init__(self) -> None:
         """Проверяет типы, диапазоны и допустимые значения параметров."""
@@ -55,6 +56,9 @@ class AimSettings:
 
         if self.target not in ("head", "body"):
             raise AimSettingsError("target: допустимы только 'head' или 'body'")
+
+        if type(self.include_teammates) is not bool:
+            raise AimSettingsError("include_teammates: требуется логическое значение (bool)")
 
     @classmethod
     def parse(cls, raw: object) -> AimSettings:
@@ -96,6 +100,10 @@ class AimSettings:
         if target_raw not in ("head", "body"):
             raise AimSettingsError("target: допустимы только 'head' или 'body'")
 
+        include_teammates_raw = fields.get("include_teammates", False)
+        if type(include_teammates_raw) is not bool:
+            raise AimSettingsError("include_teammates: требуется логическое значение (bool)")
+
         return cls(
             enabled=enabled_raw,
             mouse_device=device_raw,
@@ -103,4 +111,5 @@ class AimSettings:
             button=btn_raw,
             radius_percent=radius_num,
             target=target_raw,
+            include_teammates=include_teammates_raw,
         )

@@ -19,6 +19,7 @@
     "sensitivity": 1.0,
     "button": "BTN_SIDE",
     "radius_percent": 10.0,
-    "target": "head"
+    "target": "head",
+    "include_teammates": false
   }
 }

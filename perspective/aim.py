@@ -27,7 +27,7 @@ def _normalize_angle(angle_deg: float) -> float:
 
 def select_target(frame: Frame, settings: Settings,
                   stretched_aspect: float | None = None) -> AimTarget | None:
-    """Выбирает ближайшего живого врага внутри круга прицела и считает отсчёты мыши."""
+    """Выбирает ближайшую допустимую цель внутри круга и считает отсчёты мыши."""
     if frame.status:
         return None
 
@@ -89,32 +89,33 @@ def select_target(frame: Frame, settings: Settings,
     best_pitch_diff: float = 0.0
 
     enemy_team = 2 if local_player.team == 3 else 3
+    candidate_teams = (2, 3) if aim_settings.include_teammates else (enemy_team,)
 
-    for enemy in frame.players:
-        if enemy.identity == local_player.identity:
+    for candidate in frame.players:
+        if candidate.identity == local_player.identity:
             continue
-        if enemy.team != enemy_team or enemy.dead or enemy.health <= 0:
+        if candidate.team not in candidate_teams or candidate.dead or candidate.health <= 0:
             continue
 
         # Определение точки цели: head или body
         if aim_settings.target == "head":
-            if enemy.eye is not None:
-                target_pt = enemy.eye
+            if candidate.eye is not None:
+                target_pt = candidate.eye
             else:
                 eye_h = settings.eye_height
-                if enemy.bounds is not None:
-                    eye_h = max(enemy.bounds[0].z, min(enemy.bounds[1].z, eye_h))
-                target_pt = enemy.position.add(Vec3(0, 0, eye_h))
+                if candidate.bounds is not None:
+                    eye_h = max(candidate.bounds[0].z, min(candidate.bounds[1].z, eye_h))
+                target_pt = candidate.position.add(Vec3(0, 0, eye_h))
         else:
-            if enemy.bounds is not None:
+            if candidate.bounds is not None:
                 center_offset = Vec3(
-                    (enemy.bounds[0].x + enemy.bounds[1].x) / 2.0,
-                    (enemy.bounds[0].y + enemy.bounds[1].y) / 2.0,
-                    (enemy.bounds[0].z + enemy.bounds[1].z) / 2.0,
+                    (candidate.bounds[0].x + candidate.bounds[1].x) / 2.0,
+                    (candidate.bounds[0].y + candidate.bounds[1].y) / 2.0,
+                    (candidate.bounds[0].z + candidate.bounds[1].z) / 2.0,
                 )
-                target_pt = enemy.position.add(center_offset)
+                target_pt = candidate.position.add(center_offset)
             else:
-                target_pt = enemy.position.add(Vec3(0, 0, settings.body_height / 2.0))
+                target_pt = candidate.position.add(Vec3(0, 0, settings.body_height / 2.0))
 
         clip = camera.to_clip(target_pt)
         # Если clip не конечен или W < 0.1, исключить
@@ -159,7 +160,7 @@ def select_target(frame: Frame, settings: Settings,
             pitch_diff = tgt_pitch - cam_pitch
 
             best_dist = dist
-            best_target = enemy
+            best_target = candidate
             best_yaw_diff = yaw_diff
             best_pitch_diff = pitch_diff
 
